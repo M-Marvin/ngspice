@@ -4588,6 +4588,19 @@ int get_number_terminals(char *c)
             }
             return i - 2;
             break;
+        case 'x':
+            i = 0;
+            /* find the first token with "params:" or "=" in the line*/
+            while ((i < 100) && (*c != '\0')) {
+                char *inst = gettok_instance(&c);
+                strncpy(nam_buf, inst, sizeof(nam_buf) - 1);
+                txfree(inst);
+                if (strstr(nam_buf, "params") || strchr(nam_buf, '='))
+                    break;
+                i++;
+            }
+            return i - 2;
+            break;
         case 'u':
         case 'j':
         case 'w':
@@ -10275,6 +10288,10 @@ static void inp_probe(struct card* deck)
         /* Either we have 'all' among the .probe parameters, or we have a single .probe without parameters:
            Add current measure voltage sources for all devices, add differential E sources only for selected devices. */
 
+        fprintf(stdout, "Note: blank .probe or .probe all are not yet supported \n");
+        haveall = FALSE;
+        if (!probeparams)
+            return;
 
     }
 
@@ -10483,6 +10500,101 @@ static void inp_probe(struct card* deck)
             }
             /* No .probe parameter 'all' (has been treated already), but dedicated current probes requested */
             else if (!haveall && ciprefix("i(", tmpstr)) {
+                char* instname, * node1 = NULL;
+                struct card* tmpcard;
+                int numnodes;
+
+                tmpstr += 2;
+
+                instname = gettok_noparens(&tmpstr);
+                tmpcard = nghash_find(instances, instname);
+                if (!tmpcard) {
+                    fprintf(stderr, "Warning: Could not find the instance line for %s,\n   .probe %s will be ignored\n", instname, wltmp->wl_word);
+                    continue;
+                }
+                char* thisline = tmpcard->line;
+                numnodes = get_number_terminals(thisline);
+
+                /* skip ',' */
+                if (*tmpstr == ',')
+                    tmpstr++;
+
+                node1 = gettok_noparens(&tmpstr);
+
+                if (node1 && *node1 == '\0') {
+                    node1 = NULL;
+                }
+
+                /* i(R3) */
+                if (!node1 && numnodes == 2) {
+                    char* newline, *strnode1;
+                    /* skip instance */
+                    thisline = nexttok(thisline);
+                    char* begstr = copy_substring(tmpcard->line, thisline);
+                    strnode1 = gettok(&thisline);
+
+                    char* newnode = tprintf("%s_int", strnode1);
+
+                    newline = tprintf("%s %s %s", begstr, newnode, thisline);
+                    
+                    char* vline = tprintf("vcurr_%s_1 %s %s 0", instname, newnode, strnode1);
+
+                    tfree(tmpcard->line);
+                    tmpcard->line = newline;
+
+                    tmpcard = insert_new_line(tmpcard, vline, 0, 0);
+
+                }
+                else if (!node1 && numnodes > 2) {
+                    fprintf(stderr, "Warning: Node info is missing,\n   .probe %s will be ignored\n", wltmp->wl_word);
+                    continue;
+                }
+                /* i(X1, 2) */
+                else if (node1 && *node1 != '\0') {
+                    char* newline, * ptr;
+                    long int nodenum;
+                    int i;
+                    bool err = FALSE;
+                    /* nodes are numbered 1, 2, 3, ... */
+                    nodenum = strtol(node1, &ptr, 10);
+                    if (nodenum > numnodes) {
+                        fprintf(stderr, "Warning: There are only %d nodes available for %s,\n   .probe %s will be ignored\n", numnodes, instname, wltmp->wl_word);
+                        continue;
+                    }
+
+                    /* skip instance and leading nodes not wanted */
+                    for (i = 0; i < nodenum; i++) {
+                        thisline = nexttok(thisline);
+                        if (*thisline == '\0') {
+                            fprintf(stderr, "Warning: node number %d not available for instance %s!\n", nodenum);
+                            err = TRUE;
+                            break;
+                        }
+                    }
+                    if (err)
+                        continue;
+
+                    char* begstr = copy_substring(tmpcard->line, thisline);
+
+                    char* strnode1 = gettok(&thisline);
+
+                    char* newnode = tprintf("%s_int", strnode1);
+
+                    newline = tprintf("%s %s %s", begstr, newnode, thisline);
+
+                    char* vline = tprintf("vcurr_%s_%s %s %s 0", instname, node1, newnode, strnode1);
+
+                    tfree(tmpcard->line);
+                    tmpcard->line = newline;
+
+                    tmpcard = insert_new_line(tmpcard, vline, 0, 0);
+
+                    tfree(begstr);
+                    tfree(strnode1);
+                    tfree(newnode);
+
+                }
+
             }
             else {
                 fprintf(stderr, "Warning: unknown .probe parameter %s,\n   .probe %s will be ignored!\n", tmpstr, wltmp->wl_word);
