@@ -10440,6 +10440,10 @@ static void inp_probe(struct card* deck)
                         fprintf(stderr, "Warning: There are only %d nodes available for %s,\n   .probe %s will be ignored!\n", numnodes, instname, wltmp->wl_word);
                         continue;
                     }
+                    if (nodenum1 == nodenum2) {
+                        fprintf(stderr, "Warning: Duplicate node numbers %d,\n   .probe %s will be ignored!\n", nodenum1, wltmp->wl_word);
+                        continue;
+                    }
                     /* skip instance and leading nodes not wanted */
                     for (i = 0; i < nodenum1; i++) {
                         thisline = nexttok(thisline);
