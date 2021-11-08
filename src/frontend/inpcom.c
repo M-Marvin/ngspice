@@ -10284,8 +10284,8 @@ static void inp_probe(struct card* deck)
            Add differential probes only if 'all' had been found. */
         
         /* Set up the hash table for all instances (instance name is key, data
-           is the storage location of the card */
-        instances = nghash_init(NGHASH_MIN_SIZE);
+           is the storage location of the card) */
+        instances = nghash_init(100);
         nghash_unique(instances, TRUE);
 
         for (card = deck; card; card = card->nextcard) {
@@ -10348,7 +10348,7 @@ static void inp_probe(struct card* deck)
                 }
                 tmpcard = nghash_find(instances, instname);
                 if (!tmpcard) {
-                    fprintf(stderr, "Error: Could not find the instance line for %s\n", instname);
+                    fprintf(stderr, "Warning: Could not find the instance line for %s,\n   .probe %s will be ignored\n", instname, wltmp->wl_word);
                     continue;
                 }
                 char* thisline = tmpcard->line;
@@ -10370,9 +10370,10 @@ static void inp_probe(struct card* deck)
                     if (*tmpstr == ',')
                         tmpstr++;
                     node2 = gettok_noparens(&tmpstr);
-                    if (*node2 == '\0')
+                    if (node2 && *node2 == '\0') {
                         node2 = NULL;
-                    else {
+                    }
+                    else if (node2) {
                         /* remove trailing ] */
                         tmptmpstr = strchr(node2, ']');
                         if (tmptmpstr) {
@@ -10384,7 +10385,7 @@ static void inp_probe(struct card* deck)
                     node1 = NULL;
 
                 if (!node1 && !node2 && numnodes > 2) {
-                    fprintf(stderr, "\nWarning: cannot place voltage probe for %s\n", tmpstr);
+                    fprintf(stderr, "\nWarning: cannot place voltage probe for %s,\n   .probe %s will be ignored\n", tmpstr, wltmp->wl_word);
                     continue;
                 }
                 else if (!node1 && !node2 && numnodes == 2) {
@@ -10404,7 +10405,7 @@ static void inp_probe(struct card* deck)
                     /* nodes are numbered 1, 2, 3, ... */
                     nodenum = strtol(node1, &ptr, 10);
                     if (nodenum > numnodes) {
-                        fprintf(stderr, "Error: There are only %d nodes available for %s\n", numnodes, instname);
+                        fprintf(stderr, "Warning: There are only %d nodes available for %s,\n   .probe %s will be ignored\n", numnodes, instname, wltmp->wl_word);
                         continue;
                     }
 
@@ -10412,7 +10413,7 @@ static void inp_probe(struct card* deck)
                     for (i = 0; i < nodenum; i++) {
                         thisline = nexttok(thisline);
                         if (*thisline == '\0') {
-                            fprintf(stderr, "Error: node number %d not available for instance %s!\n", nodenum);
+                            fprintf(stderr, "Warning: node number %d not available for instance %s!\n", nodenum);
                             err = TRUE;
                             break;
                         }
@@ -10436,14 +10437,14 @@ static void inp_probe(struct card* deck)
                     nodenum1 = strtol(node1, &ptr, 10);
                     nodenum2 = strtol(node2, &ptr, 10);
                     if (nodenum1 > numnodes || nodenum2 > numnodes) {
-                        fprintf(stderr, "Error: There are only %d nodes available for %s\n", numnodes, instname);
+                        fprintf(stderr, "Warning: There are only %d nodes available for %s,\n   .probe %s will be ignored!\n", numnodes, instname, wltmp->wl_word);
                         continue;
                     }
                     /* skip instance and leading nodes not wanted */
                     for (i = 0; i < nodenum1; i++) {
                         thisline = nexttok(thisline);
                         if (*thisline == '\0') {
-                            fprintf(stderr, "Error: node number %d not available for instance %s!\n", nodenum1);
+                            fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum1, instname);
                             err = TRUE;
                             break;
                         }
@@ -10457,7 +10458,7 @@ static void inp_probe(struct card* deck)
                     for (i = 0; i < nodenum2; i++) {
                         thisline = nexttok(thisline2);
                         if (*thisline == '\0') {
-                            fprintf(stderr, "Error: node number %d not available for instance %s!\n", nodenum2);
+                            fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum2, instname);
                             err = TRUE;
                             break;
                         }
@@ -10475,6 +10476,13 @@ static void inp_probe(struct card* deck)
                 tfree(node1);
                 tfree(node2);
                 tfree(instname);
+            }
+            /* No .probe parameter 'all' (has been treated already), but dedicated current probes requested */
+            else if (!haveall && ciprefix("i(", tmpstr)) {
+            }
+            else {
+                fprintf(stderr, "Warning: unknown .probe parameter %s,\n   .probe %s will be ignored!\n", tmpstr, wltmp->wl_word);
+                continue;
             }
         }
         nghash_free(instances, NULL, NULL);
