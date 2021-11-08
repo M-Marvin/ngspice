@@ -45,6 +45,8 @@ Author: 1985 Wayne A. Christopher
 #include "subckt.h"
 #include "variable.h"
 
+#include "ngspice/hash.h"
+
 #ifdef XSPICE
 /* gtri - add - 12/12/90 - wbk - include new stuff */
 #include "ngspice/enh.h"
@@ -189,6 +191,7 @@ static char* eval_m(char* line, char* tline);
 static char* eval_tc(char* line, char* tline);
 
 static void rem_double_braces(struct card* card);
+static void inp_probe(struct card* card);
 
 #ifndef EXT_ASC
 static void utf8_syntax_check(struct card *deck);
@@ -1023,6 +1026,8 @@ struct card *inp_readall(FILE *fp, const char *dir_name,
             pspice_compat_a(working);
 
         struct nscope *root = inp_add_levels(working);
+
+        inp_probe(working);
 
         inp_fix_for_numparam(subckt_w_params, working);
 
@@ -10205,3 +10210,273 @@ static int inp_poly_2g6_compat(struct card* deck) {
     return 0;
 }
 #endif
+
+/* Find any line starting with .probe: assemble all parameters like
+   <empty>     add V(0) sources to all device nodes in addition to .save all
+   all         add V(0) sources to all device nodes in addition to .save all
+   I(R1)       add V(0) measure source to node 1 of a two-terminal device R1
+   I(M4,3)     add V(0) measure source to node 3 of a multi-terminal device M4
+   I(M4,1,2,3) add V(0) measure source to node 3 of a multi-terminal device M4
+   V([R1])     add E source to both terminals of a two-terminal device R1
+   V([X1,2,3]) add E source to terminals 2 and 3 of a multi-terminal device X1
+
+   Seach the netlist for the devices found in the .probe parameters.
+   Check the number of terminals for each device. Add 0V voltage sources
+   in series to each of the named terminals. Add E sources to the differential
+   voltage probes.
+
+   */
+static void inp_probe(struct card* deck)
+{
+    struct card* card;
+    int skip_control = 0;
+    int skip_subckt = 0;
+    wordlist* probes = NULL, *probeparams = NULL, *wltmp;
+    bool haveall = FALSE, havedifferential = FALSE;
+    NGHASHPTR instances;   /* instance hash table */
+
+    for (card = deck; card; card = card->nextcard) {
+        /* get the .probe netlist lines, comment them out */
+        if (ciprefix(".probe", card->line)) {
+            probes = wl_cons(card->line, probes);
+            *(card->line) = '*';
+        }
+    }
+    /* no .probe command */
+    if (probes == NULL)
+        return;
+
+    /* Assemble all .probe parameters in a wordlist 'probeparams' */
+    for (wltmp = probes; wltmp; wltmp = wltmp->wl_next) {
+        char* nextnode;
+        char* tmpstr = wltmp->wl_word;
+        /* skip *probe */
+        tmpstr = nexttok(tmpstr);
+        if (*tmpstr == '\0')
+            continue;
+        nextnode = gettok_char(&tmpstr, ')', TRUE, FALSE);
+        while (nextnode && (nextnode != '\0')) {
+            if (cieq(nextnode, "all")) {
+                haveall = TRUE;
+            }
+            else {
+                probeparams = wl_cons(nextnode, probeparams);
+            }
+            if (ciprefix("v([", nextnode)) {
+                havedifferential = TRUE;
+            }
+            nextnode = gettok_char(&tmpstr, ')', TRUE, FALSE);
+        }
+    }
+    /* don't free the wl_word, they belong to the cards */
+    tfree(probes);
+
+    if (haveall || probeparams == NULL) {
+        /* Either we have 'all' among the .probe parameters, or we have a single .probe without parameters:
+           Add current measure voltage sources for all devices, add differential E sources only for selected devices. */
+
+
+    }
+
+    if (probeparams) {
+        /* There are .probe with parameters:
+           Add current measure voltage sources only for the selected devices.
+           Add differential probes only if 'all' had been found. */
+        
+        /* Set up the hash table for all instances (instance name is key, data
+           is the storage location of the card */
+        instances = nghash_init(NGHASH_MIN_SIZE);
+        nghash_unique(instances, TRUE);
+
+        for (card = deck; card; card = card->nextcard) {
+            char* curr_line = card->line;
+
+            /* exclude any command inside .control ... .endc */
+            if (ciprefix(".control", curr_line)) {
+                skip_control++;
+                continue;
+            }
+            else if (ciprefix(".endc", curr_line)) {
+                skip_control--;
+                continue;
+            }
+            else if (skip_control > 0) {
+                continue;
+            }
+            /* exclude any device or command inside .subckt ... .ends */
+            if (ciprefix(".subckt", curr_line)) {
+                skip_subckt++;
+                continue;
+            }
+            else if (ciprefix(".ends", curr_line)) {
+                skip_subckt--;
+                continue;
+            }
+            else if (skip_subckt > 0) {
+                continue;
+            }
+            if (*curr_line == '*')
+                continue;
+            if (*curr_line == '.')
+                continue;
+
+            /* here we should go on with only true device instances at top level.
+               Put all instance names as key into a hash table, with the address as parameter. */
+               /* Get the instance name as key */
+            char* instname = gettok_instance(&curr_line);
+            nghash_insert(instances, instname, card);
+        }
+
+        /* Scan through the parameters, check for the device, look it up in the hash table,
+           perform the action required */
+
+        for (wltmp = probeparams; wltmp; wltmp = wltmp->wl_next) {
+            char* tmpstr = wltmp->wl_word;
+            /* check for differential voltage probes */
+            if (ciprefix("v([", tmpstr)) {
+                char* instname, * node1 = NULL, * node2 = NULL, *tmptmpstr;
+                struct card* tmpcard;
+                int numnodes;
+
+                tmpstr += 3;
+
+                instname = gettok_noparens(&tmpstr);
+                /* remove trailing ] */
+                tmptmpstr = strchr(instname, ']');
+                if (tmptmpstr) {
+                    *tmptmpstr = '\0';
+                }
+                tmpcard = nghash_find(instances, instname);
+                if (!tmpcard) {
+                    fprintf(stderr, "Error: Could not find the instance line for %s\n", instname);
+                    continue;
+                }
+                char* thisline = tmpcard->line;
+                numnodes = get_number_terminals(thisline);
+
+                /* skip ',' */
+                if (*tmpstr == ',')
+                    tmpstr++;
+
+                node1 = gettok_noparens(&tmpstr);
+                /* remove trailing ] */
+                tmptmpstr = strchr(node1, ']');
+                if (tmptmpstr) {
+                    *tmptmpstr = '\0';
+                }
+
+                if (node1 && *node1 != '\0') {
+                    /* skip ',' */
+                    if (*tmpstr == ',')
+                        tmpstr++;
+                    node2 = gettok_noparens(&tmpstr);
+                    if (*node2 == '\0')
+                        node2 = NULL;
+                    else {
+                        /* remove trailing ] */
+                        tmptmpstr = strchr(node2, ']');
+                        if (tmptmpstr) {
+                            *tmptmpstr = '\0';
+                        }
+                    }
+                }
+                else
+                    node1 = NULL;
+
+                if (!node1 && !node2 && numnodes > 2) {
+                    fprintf(stderr, "\nWarning: cannot place voltage probe for %s\n", tmpstr);
+                    continue;
+                }
+                else if (!node1 && !node2 && numnodes == 2) {
+                    char* newline;
+                    /* skip instance */
+                    thisline = nexttok(thisline);
+                    node1 = gettok(&thisline);
+                    node2 = gettok(&thisline);
+                    newline = tprintf("Ediff_%s Vdiff_%s 0 %s %s 1", instname, instname, node1, node2);
+                    tmpcard = insert_new_line(tmpcard, newline, 0, 0);
+                }
+                else if (node1 && !node2) {
+                    char* newline, * ptr;
+                    long int nodenum;
+                    int i;
+                    bool err = FALSE;
+                    /* nodes are numbered 1, 2, 3, ... */
+                    nodenum = strtol(node1, &ptr, 10);
+                    if (nodenum > numnodes) {
+                        fprintf(stderr, "Error: There are only %d nodes available for %s\n", numnodes, instname);
+                        continue;
+                    }
+
+                    /* skip instance and leading nodes not wanted */
+                    for (i = 0; i < nodenum; i++) {
+                        thisline = nexttok(thisline);
+                        if (*thisline == '\0') {
+                            fprintf(stderr, "Error: node number %d not available for instance %s!\n", nodenum);
+                            err = TRUE;
+                            break;
+                        }
+                    }
+                    if (err)
+                        continue;
+
+                    char *strnode1 = gettok(&thisline);
+
+                    newline = tprintf("Ediff_%s Vdiff_%s_%s_0 0 %s 0 1", instname, instname, node1, strnode1);
+                    tmpcard = insert_new_line(tmpcard, newline, 0, 0);
+                    tfree(strnode1);
+                }
+                else if (node1 && node2) {
+                    char* newline, * ptr;
+                    long int nodenum1, nodenum2;
+                    int i;
+                    bool err = FALSE;
+                    char* thisline2 = thisline;
+                    /* nodes are numbered 1, 2, 3, ... */
+                    nodenum1 = strtol(node1, &ptr, 10);
+                    nodenum2 = strtol(node2, &ptr, 10);
+                    if (nodenum1 > numnodes || nodenum2 > numnodes) {
+                        fprintf(stderr, "Error: There are only %d nodes available for %s\n", numnodes, instname);
+                        continue;
+                    }
+                    /* skip instance and leading nodes not wanted */
+                    for (i = 0; i < nodenum1; i++) {
+                        thisline = nexttok(thisline);
+                        if (*thisline == '\0') {
+                            fprintf(stderr, "Error: node number %d not available for instance %s!\n", nodenum1);
+                            err = TRUE;
+                            break;
+                        }
+                    }
+                    if (err)
+                        continue;
+
+                    char *strnode1 = gettok(&thisline);
+
+                    /* skip instance and leading nodes not wanted */
+                    for (i = 0; i < nodenum2; i++) {
+                        thisline = nexttok(thisline2);
+                        if (*thisline == '\0') {
+                            fprintf(stderr, "Error: node number %d not available for instance %s!\n", nodenum2);
+                            err = TRUE;
+                            break;
+                        }
+                    }
+                    if (err)
+                        continue;
+
+                    char *strnode2 = gettok(&thisline);
+
+                    newline = tprintf("Ediff_%s Vdiff_%s_%s_%s 0 %s %s 1", instname, instname, node1, node2, strnode1, strnode2);
+                    tmpcard = insert_new_line(tmpcard, newline, 0, 0);
+                    tfree(strnode1);
+                    tfree(strnode2);
+                }
+                tfree(node1);
+                tfree(node2);
+                tfree(instname);
+            }
+        }
+        nghash_free(instances, NULL, NULL);
+    }
+}
