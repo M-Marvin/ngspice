@@ -10430,8 +10430,10 @@ static void inp_probe(struct card* deck)
                         }
                     }
                 }
-                else
+                else {
                     node1 = NULL;
+                    nodename2 = "nn";
+                }
 
                 if (!node1 && !node2 && numnodes > 2) {
                     fprintf(stderr, "\nWarning: cannot place voltage probe for %s,\n   .probe %s will be ignored\n", tmpstr, wltmp->wl_word);
