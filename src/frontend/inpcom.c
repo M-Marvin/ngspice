@@ -192,6 +192,8 @@ static char* eval_tc(char* line, char* tline);
 
 static void rem_double_braces(struct card* card);
 static void inp_probe(struct card* card);
+static char* get_terminal_name(char* element, char* numberstr);
+static char* get_terminal_number(char* element, char* numberstr);
 
 #ifndef EXT_ASC
 static void utf8_syntax_check(struct card *deck);
@@ -10247,6 +10249,7 @@ static void inp_probe(struct card* deck)
     wordlist* probes = NULL, *probeparams = NULL, *wltmp;
     bool haveall = FALSE, havedifferential = FALSE;
     NGHASHPTR instances;   /* instance hash table */
+    int ee = 0; /* serial number for sources */
 
     for (card = deck; card; card = card->nextcard) {
         /* get the .probe netlist lines, comment them out */
@@ -10348,11 +10351,13 @@ static void inp_probe(struct card* deck)
            perform the action required */
 
         for (wltmp = probeparams; wltmp; wltmp = wltmp->wl_next) {
-            char* tmpstr = wltmp->wl_word;
+            char *tmpstr = wltmp->wl_word;
+            ee++;
             /* check for differential voltage probes */
             if (ciprefix("v([", tmpstr)) {
-                char* instname, * node1 = NULL, * node2 = NULL, *tmptmpstr;
-                struct card* tmpcard;
+                char *instname, *node1 = NULL, *node2 = NULL, *tmptmpstr;
+                char *nodename1, *nodename2;
+                struct card *tmpcard;
                 int numnodes;
 
                 tmpstr += 3;
@@ -10381,20 +10386,47 @@ static void inp_probe(struct card* deck)
                 if (tmptmpstr) {
                     *tmptmpstr = '\0';
                 }
+                
+                /* preserve the 0 node */
+                if (*node1 == '0') {
+                    nodename1 = "0";
+                }
+                else {
+                    if (*node1 != '\0' && atoi(node1) == 0) {
+                        char* nn = get_terminal_number(instname, node1);
+                        tfree(node1);
+                        node1 = copy(nn);
+                    }
+                    nodename1 = get_terminal_name(instname, node1);
+                }
 
                 if (node1 && *node1 != '\0') {
                     /* skip ',' */
                     if (*tmpstr == ',')
                         tmpstr++;
                     node2 = gettok_noparens(&tmpstr);
+
                     if (node2 && *node2 == '\0') {
                         node2 = NULL;
+                        nodename2 = "nn";
                     }
                     else if (node2) {
                         /* remove trailing ] */
                         tmptmpstr = strchr(node2, ']');
                         if (tmptmpstr) {
                             *tmptmpstr = '\0';
+                        }
+                        /* preserve the 0 node */
+                        if (*node2 == '0') {
+                            nodename2 = "0";
+                        }
+                        else {
+                            if (*node2 != '\0' && atoi(node2) == 0) {
+                                char* nn = get_terminal_number(instname, node2);
+                                tfree(node2);
+                                node2 = copy(nn);
+                            }
+                            nodename2 = get_terminal_name(instname, node2);
                         }
                     }
                 }
@@ -10411,7 +10443,7 @@ static void inp_probe(struct card* deck)
                     thisline = nexttok(thisline);
                     node1 = gettok(&thisline);
                     node2 = gettok(&thisline);
-                    newline = tprintf("Ediff_%s Vdiff_%s 0 %s %s 1", instname, instname, node1, node2);
+                    newline = tprintf("Ediff%d_%s Vdiff%d_%s 0 %s %s 1", ee, instname, ee, instname, node1, node2);
                     tmpcard = insert_new_line(tmpcard, newline, 0, 0);
                 }
                 else if (node1 && !node2) {
@@ -10426,21 +10458,28 @@ static void inp_probe(struct card* deck)
                         continue;
                     }
 
-                    /* skip instance and leading nodes not wanted */
-                    for (i = 0; i < nodenum; i++) {
-                        thisline = nexttok(thisline);
-                        if (*thisline == '\0') {
-                            fprintf(stderr, "Warning: node number %d not available for instance %s!\n", nodenum);
-                            err = TRUE;
-                            break;
-                        }
+                    char* strnode1;
+                    /* if node1 is the 0 node*/
+                    if (nodenum == 0) {
+                        strnode1 = copy("0");
                     }
-                    if (err)
-                        continue;
+                    else {
+                        /* skip instance and leading nodes not wanted */
+                        for (i = 0; i < nodenum; i++) {
+                            thisline = nexttok(thisline);
+                            if (*thisline == '\0') {
+                                fprintf(stderr, "Warning: node number %d not available for instance %s!\n", nodenum);
+                                err = TRUE;
+                                break;
+                            }
+                        }
+                        if (err)
+                            continue;
 
-                    char *strnode1 = gettok(&thisline);
+                        strnode1 = gettok(&thisline);
+                    }
 
-                    newline = tprintf("Ediff_%s Vdiff_%s_%s_0 0 %s 0 1", instname, instname, node1, strnode1);
+                    newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_0_v%s0 0 %s 0 1", ee, instname, ee, instname, node1, nodename1, strnode1);
                     tmpcard = insert_new_line(tmpcard, newline, 0, 0);
                     tfree(strnode1);
                 }
@@ -10461,35 +10500,49 @@ static void inp_probe(struct card* deck)
                         fprintf(stderr, "Warning: Duplicate node numbers %d,\n   .probe %s will be ignored!\n", nodenum1, wltmp->wl_word);
                         continue;
                     }
-                    /* skip instance and leading nodes not wanted */
-                    for (i = 0; i < nodenum1; i++) {
-                        thisline = nexttok(thisline);
-                        if (*thisline == '\0') {
-                            fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum1, instname);
-                            err = TRUE;
-                            break;
-                        }
+                    char* strnode1;
+                    /* if node1 is the 0 node*/
+                    if (nodenum1 == 0) {
+                        strnode1 = copy("0");
                     }
-                    if (err)
-                        continue;
-
-                    char *strnode1 = gettok(&thisline);
-
-                    /* skip instance and leading nodes not wanted */
-                    for (i = 0; i < nodenum2; i++) {
-                        thisline = nexttok(thisline2);
-                        if (*thisline == '\0') {
-                            fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum2, instname);
-                            err = TRUE;
-                            break;
+                    else {
+                        /* skip instance and leading nodes not wanted */
+                        for (i = 0; i < nodenum1; i++) {
+                            thisline = nexttok(thisline);
+                            if (*thisline == '\0') {
+                                fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum1, instname);
+                                err = TRUE;
+                                break;
+                            }
                         }
+                        if (err)
+                            continue;
+
+                        strnode1 = gettok(&thisline);
                     }
-                    if (err)
-                        continue;
 
-                    char *strnode2 = gettok(&thisline);
+                    char* strnode2;
+                    /* if node2 is the 0 node*/
+                    if (nodenum2 == 0) {
+                        strnode2 = copy("0");
+                    }
+                    else {
+                        /* skip instance and leading nodes not wanted */
+                        for (i = 0; i < nodenum2; i++) {
+                            thisline = nexttok(thisline2);
+                            if (*thisline == '\0') {
+                                fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum2, instname);
+                                err = TRUE;
+                                break;
+                            }
+                        }
+                        if (err)
+                            continue;
 
-                    newline = tprintf("Ediff_%s Vdiff_%s_%s_%s 0 %s %s 1", instname, instname, node1, node2, strnode1, strnode2);
+                        strnode2 = gettok(&thisline);
+                    }
+
+                    newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s_v%s%s 0 %s %s 1", ee, instname, ee, instname, node1, node2, nodename1, nodename2, strnode1, strnode2);
                     tmpcard = insert_new_line(tmpcard, newline, 0, 0);
                     tfree(strnode1);
                     tfree(strnode2);
@@ -10500,7 +10553,7 @@ static void inp_probe(struct card* deck)
             }
             /* No .probe parameter 'all' (has been treated already), but dedicated current probes requested */
             else if (!haveall && ciprefix("i(", tmpstr)) {
-                char* instname, * node1 = NULL;
+                char* instname, * node1 = NULL, *nodename1;
                 struct card* tmpcard;
                 int numnodes;
 
@@ -10519,11 +10572,22 @@ static void inp_probe(struct card* deck)
                 if (*tmpstr == ',')
                     tmpstr++;
 
+                /* read the input for node1: either a number or a (device dependent) name */
                 node1 = gettok_noparens(&tmpstr);
+                if (*node1 != '\0' && atoi(node1) == 0) {
+                    char *nn = get_terminal_number(instname, node1);
+                    tfree(node1);
+                    node1 = copy(nn);
+                }
+
+                nodename1 = get_terminal_name(instname, node1);
 
                 if (node1 && *node1 == '\0') {
                     node1 = NULL;
+                    nodename1 = "nn";
                 }
+                else
+                    nodename1 = get_terminal_name(instname, node1);
 
                 /* i(R3) */
                 if (!node1 && numnodes == 2) {
@@ -10582,7 +10646,7 @@ static void inp_probe(struct card* deck)
 
                     newline = tprintf("%s %s %s", begstr, newnode, thisline);
 
-                    char* vline = tprintf("vcurr_%s_%s %s %s 0", instname, node1, newnode, strnode1);
+                    char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, node1, nodename1, newnode, strnode1);
 
                     tfree(tmpcard->line);
                     tmpcard->line = newline;
@@ -10602,5 +10666,290 @@ static void inp_probe(struct card* deck)
             }
         }
         nghash_free(instances, NULL, NULL);
+    }
+}
+
+static char *get_terminal_name(char* element, char *numberstr)
+{
+    switch (*element) {
+    case 'r':
+    case 'c':
+    case 'l':
+    case 'k':
+    case 'f':
+    case 'h':
+    case 'b':
+    case 'v':
+    case 'i':
+        return "nn";
+        break;
+    case 'd':
+        switch (*numberstr) {
+        case 'a':
+        case '1':
+            return "a";
+            break;
+        case 'c':
+        case 'k':
+        case '2':
+            return "c";
+            break; 
+        default:
+            return "nn";
+            break;
+        }
+        break;
+    case 'j':
+    case 'z':
+        switch (*numberstr) {
+        case 'd':
+        case '1':
+            return "d";
+            break;
+        case 'g':
+        case '2':
+            return "g";
+            break;
+        case 's':
+        case '3':
+            return "s";
+            break;
+        default:
+            return "nn";
+            break;
+        }
+    case 'm':
+        switch (*numberstr) {
+        case 'd':
+        case '1':
+            return "d";
+            break;
+        case 'g':
+        case '2':
+            return "g";
+            break;
+        case 's':
+        case '3':
+            return "s";
+            break;
+        case 'b':
+        case '4':
+            return "b_tj";
+            break;
+        case '5':
+            return "tc";
+            break;
+        case '6':
+            return "n6";
+            break;
+        case '7':
+            return "n7";
+            break;
+        default:
+            return "nn";
+            break;
+        }
+
+    case 'q':
+        switch (*numberstr) {
+        case 'c':
+        case '1':
+            return "c";
+            break;
+        case 'b':
+        case '2':
+            return "b";
+            break;
+        case 'e':
+        case '3':
+            return "e";
+            break;
+        case 's':
+        case '4':
+            return "s";
+            break;
+        case '5':
+            return "t";
+            break;
+        default:
+            return "nn";
+            break;
+        }
+
+/* the following are not (yet) supported */
+    case 'x':
+        return "nn";
+        break;
+ 
+    case 'u':
+    case 'w':
+//        return 3;
+//        break;
+    case 't':
+    case 'o':
+    case 'g':
+    case 'e':
+    case 's':
+    case 'y':
+//        return 4;
+        return "nn";
+        break;
+
+    case 'p':
+        return "nn";
+        break;
+
+
+    default:
+        return "nn";
+        break;
+    }
+}
+
+static char* get_terminal_number(char* element, char* namestr)
+{
+    switch (*element) {
+    case 'r':
+    case 'c':
+    case 'l':
+    case 'k':
+    case 'f':
+    case 'h':
+    case 'b':
+    case 'v':
+    case 'i':
+        return "0";
+        break;
+    case 'd':
+        switch (*namestr) {
+        case 'a':
+        case '1':
+            return "1";
+            break;
+        case 'c':
+        case 'k':
+        case '2':
+            return "2";
+            break;
+        default:
+            return "0";
+            break;
+        }
+        break;
+    case 'j':
+    case 'z':
+        switch (*namestr) {
+        case 'd':
+        case '1':
+            return "1";
+            break;
+        case 'g':
+        case '2':
+            return "2";
+            break;
+        case 's':
+        case '3':
+            return "3";
+            break;
+        default:
+            return "0";
+            break;
+        }
+    case 'm':
+        switch (*namestr) {
+        case 'd':
+        case '1':
+            return "1";
+            break;
+        case 'g':
+        case '2':
+            return "2";
+            break;
+        case 's':
+        case '3':
+            return "3";
+            break;
+        case 'b':
+        case '4':
+            return "4";
+            break;
+        case 't':
+            switch (namestr[1]) {
+            case 'j':
+                return  "4";
+                break;
+            case 'c':
+                return  "5";
+                break;
+            default:
+                return "0";
+            }
+        case '5':
+            return "5";
+            break;
+        case '6':
+            return "6";
+            break;
+        case '7':
+            return "7";
+            break;
+        default:
+            return "0";
+            break;
+        }
+
+    case 'q':
+        switch (*namestr) {
+        case 'c':
+        case '1':
+            return "1";
+            break;
+        case 'b':
+        case '2':
+            return "2";
+            break;
+        case 'e':
+        case '3':
+            return "3";
+            break;
+        case 's':
+        case '4':
+            return "4";
+            break;
+        case 't':
+            return "5";
+            break;
+        default:
+            return "nn";
+            break;
+        }
+
+        /* the following are not (yet) supported */
+    case 'x':
+        return "0";
+        break;
+
+    case 'u':
+    case 'w':
+        //        return 3;
+        //        break;
+    case 't':
+    case 'o':
+    case 'g':
+    case 'e':
+    case 's':
+    case 'y':
+        //        return 4;
+        return "0";
+        break;
+
+    case 'p':
+        return "0";
+        break;
+
+
+    default:
+        return "0";
+        break;
     }
 }
