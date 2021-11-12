@@ -10342,12 +10342,16 @@ static void inp_probe(struct card* deck)
             prevcard = card;
             /* all elements with 2 nodes: add a voltage source to the second node in the elements line */
             if (numnodes == 2) {
-                char *strnode1, *strnode2;
+                char *strnode1, *strnode2, *nodename2;
                 strnode1 = gettok(&thisline);
                 strnode2 = gettok(&thisline);
 
+                nodename2 = get_terminal_name(instname, "2");
+                if (cieq(nodename2, "nn"))
+                    nodename2 = "n2";
+
                 char* newnode = tprintf("int_%s_%s", strnode2, instname);
-                char* vline = tprintf("vcurr_%s_2_%s %s %s 0", instname, strnode2, newnode, strnode2);
+                char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
                 char *newline = tprintf("%s %s %s %s", instname, strnode1, newnode, thisline);
 
                 tfree(card->line);
@@ -10692,31 +10696,38 @@ static void inp_probe(struct card* deck)
                 else
                     nodename1 = get_terminal_name(instname, node1);
 
-                /* i(R3) */
+                /* i(R3): add voltage source always to second node */
                 if (!node1 && numnodes == 2) {
-                    char* newline, *strnode1;
+                    char* newline, *strnode2, *nodename2;
                     /* skip instance */
                     thisline = nexttok(thisline);
+                    /* skip first node */
+                    thisline = nexttok(thisline);
                     char* begstr = copy_substring(tmpcard->line, thisline);
-                    strnode1 = gettok(&thisline);
+                    strnode2 = gettok(&thisline);
 
-                    char* newnode = tprintf("int_%s_%s", strnode1, instname);
+                    nodename2 = get_terminal_name(instname, "2");
+                    if (cieq(nodename2, "nn"))
+                        nodename2 = "n2";
 
+                    char* newnode = tprintf("int_%s_%s", strnode2, instname);
+                    char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
                     newline = tprintf("%s %s %s", begstr, newnode, thisline);
-                    
-                    char* vline = tprintf("vcurr_%s_1_%s %s %s 0", instname, strnode1, newnode, strnode1);
 
                     tfree(tmpcard->line);
                     tmpcard->line = newline;
 
                     tmpcard = insert_new_line(tmpcard, vline, 0, 0);
 
+                    tfree(strnode2);
+                    tfree(newnode);
+                    tfree(begstr);
                 }
                 else if (!node1 && numnodes > 2) {
                     fprintf(stderr, "Warning: Node info is missing,\n   .probe %s will be ignored\n", wltmp->wl_word);
                     continue;
                 }
-                /* i(X1, 2) */
+                /* i(X1, 2): add voltage source to user defined node */
                 else if (node1 && *node1 != '\0') {
                     char* newline, * ptr;
                     long int nodenum;
@@ -10759,9 +10770,7 @@ static void inp_probe(struct card* deck)
                     tfree(begstr);
                     tfree(strnode1);
                     tfree(newnode);
-
                 }
-
             }
             else if (!haveall) {
                 fprintf(stderr, "Warning: unknown .probe parameter %s,\n   .probe %s will be ignored!\n", tmpstr, wltmp->wl_word);
