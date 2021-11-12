@@ -227,14 +227,14 @@ static char *keep_case_of_cider_param(char *buffer)
     */
     for (s = buffer; *s && (*s != '\n'); s++) {
         if (*s == '\"') {
-            numq++; 
+            numq++;
         }
     }
     if (numq == 2) {
         /* One pair of double quotes */
         for (s = buffer; *s && (*s != '\n'); s++) {
             if (*s == '\"') {
-                keep_case = (keep_case == 0 ? 1 : 0); 
+                keep_case = (keep_case == 0 ? 1 : 0);
             }
             if (!keep_case) {
                 *s = tolower_c(*s);
@@ -815,7 +815,7 @@ static void set_compat_mode(void)
     }
     /* reset everything for 'make check' */
     if (newcompat.mc)
-        newcompat.eg = newcompat.hs = newcompat.spe = newcompat.ps = 
+        newcompat.eg = newcompat.hs = newcompat.spe = newcompat.ps =
         newcompat.ll = newcompat.lt = newcompat.ki = newcompat.a = FALSE;
 }
 
@@ -854,13 +854,13 @@ static void print_compat_mode(void) {
 
 
 /* We check x lines for nf=, w= and l= and fill in their values.
-   To be used when expanding subcircuits with binned model cards. 
-   
+   To be used when expanding subcircuits with binned model cards.
+
    In subckt.c, function doit(), lines 621ff. the unsused models
    are filtered out. 'nf' given on an x line (subcircuit invocation)
    is aknowledged. The option 'wnflag', if set to 0 in .spiceinit,
    will set 'nf' to 1 and thus suppress its usage.
-   
+
    In inp.c, function rem_unused_mos_models, another trial to removing
    unused MOS models is given, this time on the expanded m lines and
    its models.*/
@@ -902,7 +902,7 @@ void inp_get_w_l_x(struct card* card) {
             int err;
             w = w + 3;
             card->w = (float)INPevaluate(&w, &err, 0);
-            if(err) { 
+            if(err) {
                 card->w = 0;
                 continue;
             }
@@ -917,7 +917,7 @@ void inp_get_w_l_x(struct card* card) {
             int err;
             l = l + 3;
             card->l = (float)INPevaluate(&l, &err, 0);
-            if(err) { 
+            if(err) {
                 card->l = 0;
                 continue;
             }
@@ -1017,7 +1017,7 @@ struct card *inp_readall(FILE *fp, const char *dir_name,
 
 #ifndef EXT_ASC
         utf8_syntax_check(working);
-#endif		
+#endif
 
         /* some syntax checks, including title line */
         inp_check_syntax(cc);
@@ -1764,7 +1764,7 @@ static char *inp_pathresolve(const char *name)
     /* just try it */
     if (stat(name, &st) == 0)
         return copy(name);
-	
+
 #if !defined(EXT_ASC) && (defined(__MINGW32__) || defined(_MSC_VER))
     wchar_t wname[BSIZE_SP];
     if (MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, 2 * (int)strlen(name) + 1) == 0) {
@@ -1774,7 +1774,7 @@ static char *inp_pathresolve(const char *name)
     }
     if (_waccess(wname, 0) == 0)
         return copy(name);
-#endif	
+#endif
 
     /* fail if this was an absolute filename or if there is no sourcepath var
      */
@@ -6006,7 +6006,7 @@ static void inp_compat(struct card *card)
                         title_tok, node1, node2, title_tok, equation, tcrstr);
             } else {                       /* charge formulation */
                 // Gxxx  n1 n2 n-aux 0  1
-                ckt_array[0] = tprintf("g%s %s %s %s_int1 0 1", 
+                ckt_array[0] = tprintf("g%s %s %s %s_int1 0 1",
                             title_tok, node1, node2, title_tok);
                 // Lxxx  n-aux 0 1
                 ckt_array[1] = tprintf("l%s %s_int1 0 1", title_tok, title_tok);
@@ -7925,7 +7925,7 @@ static void inp_meas_current(struct card *deck)
  * E_RO_3 VB_3 VB_4  VALUE={ TABLE( V(VCCP,VCCN), 2 , 35 , 3.3 , 15 , 5 , 10
  *         )*I(VreadIo)}
  * will become
- * BE_RO_3_1 TABLE_NEW_1 0 v = pwl( V(VCCP,VCCN), 2 , 35 , 3.3 , 15 , 5 , 10) 
+ * BE_RO_3_1 TABLE_NEW_1 0 v = pwl( V(VCCP,VCCN), 2 , 35 , 3.3 , 15 , 5 , 10)
  * E_RO_3 VB_3 VB_4  VALUE={ V(TABLE_NEW_1)*I(VreadIo)}
  */
 static void replace_table(struct card *startcard)
@@ -10395,7 +10395,7 @@ static void inp_probe(struct card* deck)
         /* There are .probe with parameters:
            Add current measure voltage sources only for the selected devices.
            Add differential probes only if 'all' had been found. */
-        
+
         /* Set up the hash table for all instances (instance name is key, data
            is the storage location of the card) */
         instances = nghash_init(100);
@@ -10449,8 +10449,8 @@ static void inp_probe(struct card* deck)
             /* check for differential voltage probes:
                v([R1]) voltage at node named R1
                v(R1) voltage across a two-terminal device named R1
-               v([m4, 1]) voltage at instance node 1 of device m4 
-               v([m4, 1, 3]) voltage between instance nodes 1 and 3 of device m4 
+               v([m4, 1]) voltage at instance node 1 of device m4
+               v([m4, 1, 3]) voltage between instance nodes 1 and 3 of device m4
                v([m4, 1, m5, 3]) voltage between instance node 1 of device m4 and node 3 of device m5 */
             if (ciprefix("v([", tmpstr)) {
                 char* instname1, * node1 = NULL, * node2 = NULL, * node3 = NULL, * tmptmpstr;
@@ -10943,7 +10943,7 @@ static char *get_terminal_name(char* element, char *numberstr)
         case 'k':
         case '2':
             return "c";
-            break; 
+            break;
         default:
             return "nn";
             break;
@@ -11030,7 +11030,7 @@ static char *get_terminal_name(char* element, char *numberstr)
     case 'x':
         return "nn";
         break;
- 
+
     case 'u':
     case 'w':
 //        return 3;
