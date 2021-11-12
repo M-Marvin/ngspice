@@ -10458,16 +10458,325 @@ static void inp_probe(struct card* deck)
         for (wltmp = probeparams; wltmp; wltmp = wltmp->wl_next) {
             char *tmpstr = wltmp->wl_word;
             ee++;
-            /* check for differential voltage probes */
+            /* check for differential voltage probes:
+               v([R1]) voltage at node named R1
+               v(R1) voltage across a two-terminal device named R1
+               v([m4, 1]) voltage at instance node 1 of device m4 
+               v([m4, 1, 3]) voltage between instance nodes 1 and 3 of device m4 
+               v([m4, 1, m5, 3]) voltage between instance node 1 of device m4 and node 3 of device m5 */
             if (ciprefix("v([", tmpstr)) {
-                char *instname, *node1 = NULL, *node2 = NULL, *tmptmpstr;
-                char *nodename1, *nodename2;
-                struct card *tmpcard;
-                int numnodes;
+                char* instname, * instname1, * node1 = NULL, * node2 = NULL, * node3 = NULL, * tmptmpstr;
+                char* nodename1, * nodename2;
+                struct card* tmpcard, * tmpcard1, * tmpcard2 = NULL;
+                int numnodes, numnodes1, numnodes2;
+                char* cname = tmpstr;
 
                 tmpstr += 3;
 
-                instname = gettok_noparens(&tmpstr);
+                instname1 = gettok_noparens(&tmpstr);
+                /* skip ',' */
+                if (*tmpstr == ',')
+                    tmpstr++;
+                /* remove trailing ] */
+                tmptmpstr = strchr(instname1, ']');
+                if (tmptmpstr) {
+                    *tmptmpstr = '\0';
+                }
+                node1 = gettok_noparens(&tmpstr);
+                if (*node1 != '\0') {
+                    /* skip ',' */
+                    if (*tmpstr == ',')
+                        tmpstr++;
+                    tmptmpstr = strchr(node1, ']');
+                    if (tmptmpstr) {
+                        *tmptmpstr = '\0';
+                    }
+                    node2 = gettok_noparens(&tmpstr);
+                    if (*node2 != '\0') {
+                        /* skip ',' */
+                        if (*tmpstr == ',')
+                            tmpstr++;
+                        tmptmpstr = strchr(node2, ']');
+                        if (tmptmpstr) {
+                            *tmptmpstr = '\0';
+                        }
+                        node3 = gettok_noparens(&tmpstr);
+                        tmptmpstr = strchr(node3, ']');
+                        if (tmptmpstr) {
+                            *tmptmpstr = '\0';
+                        }
+                        if (*node3 == '\0')
+                            node3 = NULL;
+                    }
+                    else
+                        node2 = NULL;
+                }
+                else
+                    node1 = NULL;
+
+                tmpcard1 = nghash_find(instances, instname1);
+                if (!tmpcard1) {
+                    fprintf(stderr, "Warning: Could not find the instance line for %s,\n   .probe %s will be ignored\n", instname1, wltmp->wl_word);
+                    continue;
+                }
+                char* thisline = tmpcard1->line;
+                numnodes1 = get_number_terminals(thisline);
+
+                if (!node1 && !node2 && !node3) {
+                    /* v([nodename]) */
+                    fprintf(stderr, "Warning: v([nodename]) is not supported\n");
+                    continue;
+                }
+                else if (node1 && !node2 && !node3) {
+                    /* v([instance, node]) */
+                    char* newline, * ptr;
+                    long int nodenum1;
+                    int i;
+                    bool err = FALSE;
+                    /* nodes are numbered 1, 2, 3, ... */
+                    nodenum1 = strtol(node1, &ptr, 10);
+                    if (nodenum1 > numnodes1) {
+                        fprintf(stderr, "Warning: There are only %d nodes available for %s,\n   .probe %s will be ignored\n", numnodes1, instname1, wltmp->wl_word);
+                        continue;
+                    }
+
+                    char* strnode1;
+                    /* if node1 is the 0 node*/
+                    if (nodenum1 == 0) {
+                        strnode1 = copy("0");
+                    }
+                    else {
+                        /* skip instance and leading nodes not wanted */
+                        for (i = 0; i < nodenum1; i++) {
+                            thisline = nexttok(thisline);
+                            if (*thisline == '\0') {
+                                fprintf(stderr, "Warning: node number %d not available for instance %s!\n", nodenum1);
+                                err = TRUE;
+                                break;
+                            }
+                        }
+                        if (err)
+                            continue;
+
+                        strnode1 = gettok(&thisline);
+                    }
+
+                    /* preserve the 0 node */
+                    if (*node1 == '0') {
+                        nodename1 = "0";
+                    }
+                    else {
+                        if (*node1 != '\0' && atoi(node1) == 0) {
+                            char* nn = get_terminal_number(instname1, node1);
+                            tfree(node1);
+                            node1 = copy(nn);
+                        }
+                        nodename1 = get_terminal_name(instname1, node1);
+                    }
+
+                    newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_0_v%s0 0 %s 0 1", ee, instname1, ee, instname1, node1, nodename1, strnode1);
+                    tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
+                    tfree(strnode1);
+                }
+                else if (node1 && node2 && !node3) {
+                    /* v([instance, node1, node2])*/
+                    char* newline, * ptr;
+                    long int nodenum1, nodenum2;
+                    int i;
+                    bool err = FALSE;
+                    char* thisline2 = thisline;
+                    /* nodes are numbered 1, 2, 3, ... */
+                    nodenum1 = strtol(node1, &ptr, 10);
+                    nodenum2 = strtol(node2, &ptr, 10);
+                    if (nodenum1 > numnodes1 || nodenum2 > numnodes1) {
+                        fprintf(stderr, "Warning: There are only %d nodes available for %s,\n   .probe %s will be ignored!\n", numnodes1, instname1, wltmp->wl_word);
+                        continue;
+                    }
+                    if (nodenum1 == nodenum2) {
+                        fprintf(stderr, "Warning: Duplicate node numbers %d,\n   .probe %s will be ignored!\n", nodenum1, wltmp->wl_word);
+                        continue;
+                    }
+                    char* strnode1;
+                    /* if node1 is the 0 node*/
+                    if (nodenum1 == 0) {
+                        strnode1 = copy("0");
+                    }
+                    else {
+                        /* skip instance and leading nodes not wanted */
+                        for (i = 0; i < nodenum1; i++) {
+                            thisline = nexttok(thisline);
+                            if (*thisline == '\0') {
+                                fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum1, instname1);
+                                err = TRUE;
+                                break;
+                            }
+                        }
+                        if (err)
+                            continue;
+
+                        strnode1 = gettok(&thisline);
+                    }
+
+                    char* strnode2;
+                    /* if node2 is the 0 node*/
+                    if (nodenum2 == 0) {
+                        strnode2 = copy("0");
+                    }
+                    else {
+                        /* skip instance and leading nodes not wanted */
+                        for (i = 0; i < nodenum2; i++) {
+                            thisline = nexttok(thisline2);
+                            if (*thisline == '\0') {
+                                fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum2, instname1);
+                                err = TRUE;
+                                break;
+                            }
+                        }
+                        if (err)
+                            continue;
+
+                        strnode2 = gettok(&thisline);
+                    }
+
+                    /* preserve the 0 node */
+                    if (*node1 == '0') {
+                        nodename1 = "0";
+                    }
+                    else {
+                        if (*node1 != '\0' && atoi(node1) == 0) {
+                            char* nn = get_terminal_number(instname1, node1);
+                            tfree(node1);
+                            node1 = copy(nn);
+                        }
+                        nodename1 = get_terminal_name(instname1, node1);
+                    }
+
+                    /* preserve the 0 node */
+                    if (*node2 == '0') {
+                        nodename2 = "0";
+                    }
+                    else {
+                        if (*node2 != '\0' && atoi(node2) == 0) {
+                            char* nn = get_terminal_number(instname1, node2);
+                            tfree(node2);
+                            node2 = copy(nn);
+                        }
+                        nodename2 = get_terminal_name(instname1, node2);
+                    }
+
+
+                    newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s_v%s%s 0 %s %s 1", ee, instname1, ee, instname1, node1, node2, nodename1, nodename2, strnode1, strnode2);
+                    tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
+                    tfree(strnode1);
+                    tfree(strnode2);
+                }
+                else if (node1 && node2 && node3) {
+                    /* v([instance1, node of instance1, instance2, node of instance2]) */
+                    char *newline, *ptr, *strnode1, *strnode2;
+                    long int nodenum1, nodenum2;
+                    int i;
+                    bool err = FALSE;
+                    char* instname2 = node2;
+                    node2 = node3;
+                    tmpcard2 = nghash_find(instances, instname2);
+                    if (!tmpcard2) {
+                        fprintf(stderr, "Warning: Could not find the instance line for %s,\n   .probe %s will be ignored\n", instname2, wltmp->wl_word);
+                        continue;
+                    }
+                    char* thisline2 = tmpcard2->line;
+                    numnodes2 = get_number_terminals(thisline2);
+
+                    /* nodes are numbered 1, 2, 3, ... */
+                    nodenum1 = strtol(node1, &ptr, 10);
+                    nodenum2 = strtol(node2, &ptr, 10);
+                    if (nodenum1 > numnodes1) {
+                        fprintf(stderr, "Warning: There are only %d nodes available for %s,\n   .probe %s will be ignored!\n", numnodes1, instname1, wltmp->wl_word);
+                        continue;
+                    }
+                    if (nodenum2 > numnodes2) {
+                        fprintf(stderr, "Warning: There are only %d nodes available for %s,\n   .probe %s will be ignored!\n", numnodes2, instname2, wltmp->wl_word);
+                        continue;
+                    }
+                    if (nodenum1 == nodenum2 && eq(instname1,instname2)) {
+                        fprintf(stderr, "Warning: Duplicate node numbers and instances,\n   .probe %s will be ignored!\n", wltmp->wl_word);
+                        continue;
+                    }
+                    /* if node1 is the 0 node*/
+                    if (nodenum1 == 0) {
+                        strnode1 = copy("0");
+                    }
+                    else {
+                        /* skip instance and leading nodes not wanted */
+                        for (i = 0; i < nodenum1; i++) {
+                            thisline = nexttok(thisline);
+                            if (*thisline == '\0') {
+                                fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum1, instname1);
+                                err = TRUE;
+                                break;
+                            }
+                        }
+                        if (err)
+                            continue;
+
+                        strnode1 = gettok(&thisline);
+                    }
+
+                    /* if node2 is the 0 node*/
+                    if (nodenum2 == 0) {
+                        strnode2 = copy("0");
+                    }
+                    else {
+                        /* skip instance and leading nodes not wanted */
+                        for (i = 0; i < nodenum2; i++) {
+                            thisline = nexttok(thisline2);
+                            if (*thisline == '\0') {
+                                fprintf(stderr, "Warning: node number %d not available for instance %s, ignored!\n", nodenum2, instname2);
+                                err = TRUE;
+                                break;
+                            }
+                        }
+                        if (err)
+                            continue;
+
+                        strnode2 = gettok(&thisline);
+                    }
+
+                    /* preserve the 0 node */
+                    if (*node1 == '0') {
+                        nodename1 = "0";
+                    }
+                    else {
+                        if (*node1 != '\0' && atoi(node1) == 0) {
+                            char* nn = get_terminal_number(instname1, node1);
+                            tfree(node1);
+                            node1 = copy(nn);
+                        }
+                        nodename1 = get_terminal_name(instname1, node1);
+                    }
+
+                    /* preserve the 0 node */
+                    if (*node2 == '0') {
+                        nodename2 = "0";
+                    }
+                    else {
+                        if (*node2 != '\0' && atoi(node2) == 0) {
+                            char* nn = get_terminal_number(instname2, node2);
+                            tfree(node2);
+                            node2 = copy(nn);
+                        }
+                        nodename2 = get_terminal_name(instname2, node2);
+                    }
+                    newline = tprintf("Ediff%d_%s_%s Vdiff%d_%s_%s_%s_%s_v%s_v%s 0 %s %s 1", ee, instname1, instname2, ee, instname1, node1, instname2, node2, nodename1, nodename2, strnode1, strnode2);
+                    tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
+                    tfree(strnode1);
+                    tfree(strnode2);
+
+                }
+                else {
+                    fprintf(stderr, "Warning: Strange syntax in .probe parameter %s, ingnored\n", cname);
+                }
+            }
+#if (0)
                 /* remove trailing ] */
                 tmptmpstr = strchr(instname, ']');
                 if (tmptmpstr) {
@@ -10478,7 +10787,7 @@ static void inp_probe(struct card* deck)
                     fprintf(stderr, "Warning: Could not find the instance line for %s,\n   .probe %s will be ignored\n", instname, wltmp->wl_word);
                     continue;
                 }
-                char* thisline = tmpcard->line;
+                thisline = tmpcard->line;
                 numnodes = get_number_terminals(thisline);
 
                 /* skip ',' */
@@ -10657,6 +10966,38 @@ static void inp_probe(struct card* deck)
                 tfree(node1);
                 tfree(node2);
                 tfree(instname);
+            }
+#endif
+            /* voltage across two-terminal device */
+            else if (ciprefix("v(", tmpstr) && tmpstr[2] != '[') {
+                char* instname, *strnode1, *strnode2, *newline, *nodename1, *nodename2;
+                struct card* tmpcard;
+                int numnodes;
+                char* cname = tmpstr;
+
+                tmpstr += 2;
+                instname = gettok_noparens(&tmpstr);
+                tmpstr += 1;
+                tmpcard = nghash_find(instances, instname);
+                char* thisline = tmpcard->line;
+                numnodes = get_number_terminals(thisline);
+                if (numnodes != 2) {
+                    fprintf(stderr, "Warning: %s not a two-terminal device,\n   .probe %s ignored!\n", instname, cname);
+                    tfree(instname);
+                    continue;
+                }
+                thisline = nexttok(thisline); /* skip instance name */
+                strnode1 = gettok(&thisline);
+                strnode2 = gettok(&thisline);
+                nodename1 = get_terminal_name(instname, "1");
+                nodename2 = get_terminal_name(instname, "2");
+                if (eq(nodename1, "nn") || eq(nodename2, "nn"))
+                    newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s 0 %s %s 1", ee, instname, ee, instname, "1", "2", strnode1, strnode2);
+                else
+                    newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s_v%s%s 0 %s %s 1", ee, instname, ee, instname, "1", "2",nodename1, nodename2,  strnode1, strnode2);
+                tmpcard = insert_new_line(tmpcard, newline, 0, 0);
+                tfree(strnode1);
+                tfree(strnode2);
             }
             /* No .probe parameter 'all' (has been treated already), but dedicated current probes requested */
             else if (!haveall && ciprefix("i(", tmpstr)) {
