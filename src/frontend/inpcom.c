@@ -10243,7 +10243,7 @@ static int inp_poly_2g6_compat(struct card* deck) {
    */
 static void inp_probe(struct card* deck)
 {
-    struct card* card;
+    struct card *card, *newcards = NULL, *addcards = NULL;
     int skip_control = 0;
     int skip_subckt = 0;
     wordlist* probes = NULL, *probeparams = NULL, *wltmp;
@@ -10270,9 +10270,13 @@ static void inp_probe(struct card* deck)
         tmpstr = nexttok(tmpstr);
         if (*tmpstr == '\0')
             continue;
+        if (ciprefix("all", tmpstr)) {
+            haveall = TRUE;
+            tmpstr = nexttok(tmpstr);
+        }
         nextnode = gettok_char(&tmpstr, ')', TRUE, FALSE);
         while (nextnode && (nextnode != '\0')) {
-            if (cieq(nextnode, "all")) {
+            if (cieq(nextnode, "(all)")) {
                 haveall = TRUE;
             }
             else {
@@ -10290,12 +10294,109 @@ static void inp_probe(struct card* deck)
     if (haveall || probeparams == NULL) {
         /* Either we have 'all' among the .probe parameters, or we have a single .probe without parameters:
            Add current measure voltage sources for all devices, add differential E sources only for selected devices. */
+        int numnodes, i, j;
 
-        fprintf(stdout, "Note: blank .probe or .probe all are not yet supported \n");
-        haveall = FALSE;
-        if (!probeparams)
-            return;
+        for (card = deck; card; card = card->nextcard) {
 
+            char* curr_line = card->line;
+            struct card* prevcard = NULL;
+
+            /* exclude any command inside .control ... .endc */
+            if (ciprefix(".control", curr_line)) {
+                skip_control++;
+                continue;
+            }
+            else if (ciprefix(".endc", curr_line)) {
+                skip_control--;
+                continue;
+            }
+            else if (skip_control > 0) {
+                continue;
+            }
+            /* exclude any device or command inside .subckt ... .ends */
+            if (ciprefix(".subckt", curr_line)) {
+                skip_subckt++;
+                continue;
+            }
+            else if (ciprefix(".ends", curr_line)) {
+                skip_subckt--;
+                continue;
+            }
+            else if (skip_subckt > 0) {
+                continue;
+            }
+            if (*curr_line == '*')
+                continue;
+            if (*curr_line == '.')
+                continue;
+
+            char* instname = gettok_instance(&curr_line);
+
+            /* select elements not in need of a measure Vsource */
+            if (strchr("evihk", *instname))
+                continue;
+
+            numnodes = get_number_terminals(card->line);
+
+            char* thisline = curr_line;
+            prevcard = card;
+            /* all elements with 2 nodes: add a voltage source to the second node in the elements line */
+            if (numnodes == 2) {
+                char *strnode1, *strnode2;
+                strnode1 = gettok(&thisline);
+                strnode2 = gettok(&thisline);
+
+                char* newnode = tprintf("int_%s_%s", strnode2, instname);
+                char* vline = tprintf("vcurr_%s_2_%s %s %s 0", instname, strnode2, newnode, strnode2);
+                char *newline = tprintf("%s %s %s %s", instname, strnode1, newnode, thisline);
+
+                tfree(card->line);
+                card->line = newline;
+
+                card = insert_new_line(card, vline, 0, 0);
+
+                tfree(strnode1);
+                tfree(strnode2);
+                tfree(newnode);
+            }
+#if (0)
+            else {
+
+                DS_CREATE(dnewline, 200);
+                sadd(&dnewline, instname);
+                cadd(&dnewline, ' ');
+                for (i = 0; i < numnodes; i++) {
+                    char* thisnode;
+                    thisnode = gettok(&thisline);
+                    char* tmpline = nghash_find(nodesmeasured, thisnode);
+                    /* If the node is already there, move to the next */
+                    if (tmpline) {
+                        sadd(&dnewline, thisnode);
+                        cadd(&dnewline, ' ');
+                        continue;
+                    }
+
+                    char* newnode = tprintf("%s_int", thisnode);
+                    sadd(&dnewline, newnode);
+                    cadd(&dnewline, ' ');
+
+                    char* vline = tprintf("vcurr_%s_1_%s %s %s 0", instname, thisnode, newnode, thisnode);
+ //                   char* vline = tprintf("vcurr_%s_%s_%s_%s %s %s 0", instname, node1, nodename1, strnode1, newnode, strnode1);
+
+
+                    card = insert_new_line(card, vline, 0, 0);
+
+                    tfree(newnode);
+                    nghash_insert(nodesmeasured, thisnode, card);
+                }
+
+            sadd(&dnewline, thisline);
+            tfree(prevcard->line);
+            prevcard->line = copy(ds_get_buf(&dnewline));
+            ds_free(&dnewline);
+            }
+#endif
+        }
     }
 
     if (probeparams) {
@@ -10599,11 +10700,11 @@ static void inp_probe(struct card* deck)
                     char* begstr = copy_substring(tmpcard->line, thisline);
                     strnode1 = gettok(&thisline);
 
-                    char* newnode = tprintf("%s_int", strnode1);
+                    char* newnode = tprintf("int_%s_%s", strnode1, instname);
 
                     newline = tprintf("%s %s %s", begstr, newnode, thisline);
                     
-                    char* vline = tprintf("vcurr_%s_1 %s %s 0", instname, newnode, strnode1);
+                    char* vline = tprintf("vcurr_%s_1_%s %s %s 0", instname, strnode1, newnode, strnode1);
 
                     tfree(tmpcard->line);
                     tmpcard->line = newline;
@@ -10644,11 +10745,11 @@ static void inp_probe(struct card* deck)
 
                     char* strnode1 = gettok(&thisline);
 
-                    char* newnode = tprintf("%s_int", strnode1);
+                    char* newnode = tprintf("int_%s_%s", strnode1, instname);
 
                     newline = tprintf("%s %s %s", begstr, newnode, thisline);
 
-                    char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, node1, nodename1, newnode, strnode1);
+                    char* vline = tprintf("vcurr_%s_%s_%s_%s %s %s 0", instname, node1, nodename1, strnode1, newnode, strnode1);
 
                     tfree(tmpcard->line);
                     tmpcard->line = newline;
@@ -10662,7 +10763,7 @@ static void inp_probe(struct card* deck)
                 }
 
             }
-            else {
+            else if (!haveall) {
                 fprintf(stderr, "Warning: unknown .probe parameter %s,\n   .probe %s will be ignored!\n", tmpstr, wltmp->wl_word);
                 continue;
             }
