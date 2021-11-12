@@ -10386,7 +10386,6 @@ static void inp_probe(struct card* deck)
                 tfree(prevcard->line);
                 prevcard->line = copy(ds_get_buf(&dnewline));
                 ds_free(&dnewline);
-
             }
         }
     }
@@ -10651,7 +10650,6 @@ static void inp_probe(struct card* deck)
                         }
                         nodename2 = get_terminal_name(instname1, node2);
                     }
-
 
                     newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s_v%s%s 0 %s %s 1", ee, instname1, ee, instname1, node1, node2, nodename1, nodename2, strnode1, strnode2);
                     tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
