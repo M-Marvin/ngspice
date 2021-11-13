@@ -10921,7 +10921,7 @@ static void inp_probe(struct card* deck)
 
 /* enter the element (instance) line and the node number (as string),
    get the node name, if defined (e.g. a for anode, c for cathode of a diode).
-   If not (yet) defined, return "nn" */
+   If not (yet) defined, return "nx" (x is the node number) or "nn" */
 static char *get_terminal_name(char* element, char *numberstr, NGHASHPTR instances)
 {
     switch (*element) {
@@ -11059,6 +11059,7 @@ static char *get_terminal_name(char* element, char *numberstr, NGHASHPTR instanc
             xcardsubsline = nexttok(xcardsubsline);
         }
         subsnodestr = gettok(&xcardsubsline);
+        tfree(subcktname);
         return subsnodestr;
         break;
     }
