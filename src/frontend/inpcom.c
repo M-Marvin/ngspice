@@ -10335,9 +10335,8 @@ static void inp_probe(struct card* deck)
         nghash_insert(instances, instname, card);
     }
 
-
     if (haveall || probeparams == NULL) {
-        /* Either we have 'all' among the .probe parameters, or we have a single .probe without parameters:
+        /* Either we have 'all' among the .probe parameters, or we have a single .probe command without parameters:
            Add current measure voltage sources for all devices, add differential E sources only for selected devices. */
         int numnodes, i;
 
@@ -10392,8 +10391,6 @@ static void inp_probe(struct card* deck)
                 strnode2 = gettok(&thisline);
 
                 nodename2 = get_terminal_name(instname, "2", instances);
-                if (cieq(nodename2, "nn"))
-                    nodename2 = "n2";
 
                 char* newnode = tprintf("int_%s_%s", strnode2, instname);
                 char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
@@ -10407,6 +10404,7 @@ static void inp_probe(struct card* deck)
                 tfree(strnode1);
                 tfree(strnode2);
                 tfree(newnode);
+                tfree(nodename2);
             }
             else {
                 char* nodename;
@@ -10426,6 +10424,7 @@ static void inp_probe(struct card* deck)
                     card = insert_new_line(card, vline, 0, 0);
 
                     tfree(newnode);
+                    tfree(nodename);
                 }
                 sadd(&dnewline, thisline);
                 tfree(prevcard->line);
@@ -10547,7 +10546,7 @@ static void inp_probe(struct card* deck)
 
                     /* preserve the 0 node */
                     if (*node1 == '0') {
-                        nodename1 = "0";
+                        nodename1 = copy("0");
                     }
                     else {
                         if (*node1 != '\0' && atoi(node1) == 0) {
@@ -10561,6 +10560,7 @@ static void inp_probe(struct card* deck)
                     newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_0_v%s0 0 %s 0 1", ee, instname1, ee, instname1, node1, nodename1, strnode1);
                     tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
                     tfree(strnode1);
+                    tfree(nodename1);
                 }
                 else if (node1 && node2 && !node3) {
                     /* v([instance, node1, node2])*/
@@ -10624,7 +10624,7 @@ static void inp_probe(struct card* deck)
 
                     /* preserve the 0 node */
                     if (*node1 == '0') {
-                        nodename1 = "0";
+                        nodename1 = copy("0");
                     }
                     else {
                         if (*node1 != '\0' && atoi(node1) == 0) {
@@ -10637,7 +10637,7 @@ static void inp_probe(struct card* deck)
 
                     /* preserve the 0 node */
                     if (*node2 == '0') {
-                        nodename2 = "0";
+                        nodename2 = copy("0");
                     }
                     else {
                         if (*node2 != '\0' && atoi(node2) == 0) {
@@ -10652,6 +10652,8 @@ static void inp_probe(struct card* deck)
                     tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
                     tfree(strnode1);
                     tfree(strnode2);
+                    tfree(nodename1);
+                    tfree(nodename2);
                 }
                 else if (node1 && node2 && node3) {
                     /* v([instance1, node of instance1, instance2, node of instance2]) */
@@ -10726,7 +10728,7 @@ static void inp_probe(struct card* deck)
 
                     /* preserve the 0 node */
                     if (*node1 == '0') {
-                        nodename1 = "0";
+                        nodename1 = copy("0");
                     }
                     else {
                         if (*node1 != '\0' && atoi(node1) == 0) {
@@ -10739,7 +10741,7 @@ static void inp_probe(struct card* deck)
 
                     /* preserve the 0 node */
                     if (*node2 == '0') {
-                        nodename2 = "0";
+                        nodename2 = copy("0");
                     }
                     else {
                         if (*node2 != '\0' && atoi(node2) == 0) {
@@ -10753,7 +10755,8 @@ static void inp_probe(struct card* deck)
                     tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
                     tfree(strnode1);
                     tfree(strnode2);
-
+                    tfree(nodename1);
+                    tfree(nodename2);
                 }
                 else {
                     fprintf(stderr, "Warning: Strange syntax in .probe parameter %s, ingnored\n", cname);
@@ -10790,6 +10793,8 @@ static void inp_probe(struct card* deck)
                 tmpcard = insert_new_line(tmpcard, newline, 0, 0);
                 tfree(strnode1);
                 tfree(strnode2);
+                tfree(nodename1);
+                tfree(nodename2);
             }
             /* No .probe parameter 'all' (has been treated already), but dedicated current probes requested */
             else if (!haveall && ciprefix("i(", tmpstr)) {
@@ -10820,11 +10825,9 @@ static void inp_probe(struct card* deck)
                     node1 = copy(nn);
                 }
 
-                nodename1 = get_terminal_name(instname, node1, instances);
-
                 if (node1 && *node1 == '\0') {
                     node1 = NULL;
-                    nodename1 = "nn";
+                    nodename1 = copy("nn");
                 }
                 else
                     nodename1 = get_terminal_name(instname, node1, instances);
@@ -10840,8 +10843,6 @@ static void inp_probe(struct card* deck)
                     strnode2 = gettok(&thisline);
 
                     nodename2 = get_terminal_name(instname, "2", instances);
-                    if (cieq(nodename2, "nn"))
-                        nodename2 = "n2";
 
                     char* newnode = tprintf("int_%s_%s_2", strnode2, instname);
                     char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
@@ -10855,9 +10856,12 @@ static void inp_probe(struct card* deck)
                     tfree(strnode2);
                     tfree(newnode);
                     tfree(begstr);
+                    tfree(nodename1);
+                    tfree(nodename2);
                 }
                 else if (!node1 && numnodes > 2) {
                     fprintf(stderr, "Warning: Node info is missing,\n   .probe %s will be ignored\n", wltmp->wl_word);
+                    tfree(nodename1);
                     continue;
                 }
                 /* i(X1, 2): add voltage source to user defined node */
@@ -10903,6 +10907,7 @@ static void inp_probe(struct card* deck)
                     tfree(begstr);
                     tfree(strnode1);
                     tfree(newnode);
+                    tfree(nodename1);
                 }
             }
             else if (!haveall) {
@@ -10929,21 +10934,21 @@ static char *get_terminal_name(char* element, char *numberstr, NGHASHPTR instanc
     case 'b':
     case 'v':
     case 'i':
-        return "nn";
+        return tprintf("n%s", numberstr);
         break;
     case 'd':
         switch (*numberstr) {
         case 'a':
         case '1':
-            return "a";
+            return copy("a");
             break;
         case 'c':
         case 'k':
         case '2':
-            return "c";
+            return copy("c");
             break;
         default:
-            return "nn";
+            return copy("nn");
             break;
         }
         break;
@@ -10952,49 +10957,49 @@ static char *get_terminal_name(char* element, char *numberstr, NGHASHPTR instanc
         switch (*numberstr) {
         case 'd':
         case '1':
-            return "d";
+            return copy("d");
             break;
         case 'g':
         case '2':
-            return "g";
+            return copy("g");
             break;
         case 's':
         case '3':
-            return "s";
+            return copy("s");
             break;
         default:
-            return "nn";
+            return copy("nn");
             break;
         }
     case 'm':
         switch (*numberstr) {
         case 'd':
         case '1':
-            return "d";
+            return copy("d");
             break;
         case 'g':
         case '2':
-            return "g";
+            return copy("g");
             break;
         case 's':
         case '3':
-            return "s";
+            return copy("s");
             break;
         case 'b':
         case '4':
-            return "b_tj";
+            return copy("b_tj");
             break;
         case '5':
-            return "tc";
+            return copy("tc");
             break;
         case '6':
-            return "n6";
+            return copy("n6");
             break;
         case '7':
-            return "n7";
+            return copy("n7");
             break;
         default:
-            return "nn";
+            return copy("nn");
             break;
         }
 
@@ -11002,55 +11007,76 @@ static char *get_terminal_name(char* element, char *numberstr, NGHASHPTR instanc
         switch (*numberstr) {
         case 'c':
         case '1':
-            return "c";
+            return copy("c");
             break;
         case 'b':
         case '2':
-            return "b";
+            return copy("b");
             break;
         case 'e':
         case '3':
-            return "e";
+            return copy("e");
             break;
         case 's':
         case '4':
-            return "s";
+            return copy("s");
             break;
         case '5':
-            return "t";
+            return copy("t");
             break;
         default:
-            return "nn";
+            return copy("nn");
             break;
         }
 
 /* the following are not (yet) supported */
     case 'x':
-        /* This should be the names of the corresponding subcircuit */
-        return "nn";
+        /* This should be the names of the corresponding subcircuit:
+           Get the subckt name from the x line
+           Search for the corresponding .subckt line
+           Find the numberstr node name of the .subckt
+           */
+    {
+        int i;
+        char* subcktname, * ptr, * xcardsubsline = NULL, * subsnodestr;
+        struct card* xcard = nghash_find(instances, element);
+        char* thisline = xcard->line;
+        int numnodes = get_number_terminals(thisline);
+        int nodenumber = (int)strtol(numberstr, &ptr, 10);
+        /*Get the subckt name from the x line*/
+        for (i = 0; i <= numnodes; i++)
+            thisline = nexttok(thisline);
+        subcktname = gettok(&thisline);
+        /*Search for the corresponding .subckt line*/
+        while (xcard->level->subckts) {
+            xcardsubsline = xcard->level->subckts->line->line;
+            if (cieq(subcktname, xcard->level->subckts->name))
+                break;
+            xcard->level->subckts = xcard->level->subckts->next;
+        }
+        /*Find the numberstr node name of the .subckt*/
+        for (i = 1; i < nodenumber + 2; i++) {
+            xcardsubsline = nexttok(xcardsubsline);
+        }
+        subsnodestr = gettok(&xcardsubsline);
+        return subsnodestr;
         break;
+    }
 
     case 'u':
     case 'w':
-//        return 3;
-//        break;
     case 't':
     case 'o':
     case 'g':
     case 'e':
     case 's':
     case 'y':
-//        return 4;
-        return "nn";
-        break;
-
     case 'p':
-        return "nn";
+        return tprintf("n%s", numberstr);
         break;
-
 
     default:
-        return "nn";
+        return copy("nn");
         break;
     }
 }
