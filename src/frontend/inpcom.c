@@ -11095,11 +11095,12 @@ static char *get_terminal_name(char* element, char *numberstr, NGHASHPTR instanc
             thisline = nexttok(thisline);
         subcktname = gettok(&thisline);
         /*Search for the corresponding .subckt line*/
-        while (xcard->level->subckts) {
-            xcardsubsline = xcard->level->subckts->line->line;
-            if (cieq(subcktname, xcard->level->subckts->name))
+        struct card_assoc* allsubs = xcard->level->subckts;
+        while (allsubs) {
+            xcardsubsline = allsubs->line->line;
+            if (cieq(subcktname, allsubs->name))
                 break;
-            xcard->level->subckts = xcard->level->subckts->next;
+            allsubs = allsubs->next;
         }
         /*Find the numberstr node name of the .subckt*/
         for (i = 1; i < nodenumber + 2; i++) {
