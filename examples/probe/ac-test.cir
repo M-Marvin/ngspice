@@ -1,0 +1,24 @@
+.probe test with ac
+
+V1 1 0 dc 0 ac 1
+R1 1 2 1k 
+R2 2 3 1k
+R3 3 0 1k
+C2 2 3 1u
+C3 3 0 1u
+
+.ac dec 5 10 10000
+
+.probe all v(R2) v(R3) v([2])
+
+.control
+run
+display
+let vd(r2) = vdiff3_r2_1_2_vn1n2
+let i(r2) = vcurr_r2_n2_3#branch 
+let vd(r3) = vdiff2_r3_1_2_vn1n2
+print vd(r2)/i(r2)
+*print vdiff3_r2_1_2_vn1n2/vcurr_r2_n2_3#branch 
+plot mag(vd(r3))
+.endc
+.end
