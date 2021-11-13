@@ -10276,7 +10276,7 @@ static void inp_probe(struct card* deck)
             tmpstr = nexttok(tmpstr);
         }
         nextnode = gettok_char(&tmpstr, ')', TRUE, FALSE);
-        while (nextnode && (nextnode != '\0')) {
+        while (nextnode && (*nextnode != '\0')) {
             if (cieq(nextnode, "(all)")) {
                 haveall = TRUE;
             }
@@ -10417,17 +10417,18 @@ static void inp_probe(struct card* deck)
                 cadd(&dnewline, ' ');
                 for (i = 1; i <= numnodes; i++) {
                     char* thisnode;
-                    char nodebuf[200];
+                    char nodebuf[20];
                     thisnode = gettok(&thisline);
                     char* newnode = tprintf("int_%s_%s_%d", thisnode, instname, i);
                     sadd(&dnewline, newnode);
                     cadd(&dnewline, ' ');
-                    char* nval = _itoa(i, nodebuf, 10);
-                    nodename = get_terminal_name(instname, nval, instances);
-                    char* vline = tprintf("vcurr_%s_%s_%s_%s %s %s 0", instname, nval, nodename, thisnode, newnode, thisnode);
+
+                    int j = snprintf(nodebuf, 10, "%d", i);
+                    nodename = get_terminal_name(instname, nodebuf, instances);
+                    char* vline = tprintf("vcurr_%s_%s_%s_%s %s %s 0", instname, nodebuf, nodename, thisnode, newnode, thisnode);
                     card = insert_new_line(card, vline, 0, 0);
 
-                    char* nodesaves = tprintf("vcurr_%s_%s_%s_%s#branch", instname, nval, nodename, thisnode);
+                    char* nodesaves = tprintf("vcurr_%s_%s_%s_%s#branch", instname, nodebuf, nodename, thisnode);
                     allsaves = wl_cons(nodesaves, allsaves);
 
                     tfree(newnode);
