@@ -46,6 +46,7 @@ Author: 1985 Wayne A. Christopher
 #include "variable.h"
 
 #include "ngspice/hash.h"
+#include "breakp2.h"
 
 #ifdef XSPICE
 /* gtri - add - 12/12/90 - wbk - include new stuff */
@@ -10246,7 +10247,7 @@ static void inp_probe(struct card* deck)
     struct card *card;
     int skip_control = 0;
     int skip_subckt = 0;
-    wordlist* probes = NULL, *probeparams = NULL, *wltmp;
+    wordlist* probes = NULL, *probeparams = NULL, *wltmp, *allsaves = NULL;
     bool haveall = FALSE, havedifferential = FALSE;
     NGHASHPTR instances;   /* instance hash table */
     int ee = 0; /* serial number for sources */
@@ -10396,6 +10397,9 @@ static void inp_probe(struct card* deck)
                 char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
                 char *newline = tprintf("%s %s %s %s", instname, strnode1, newnode, thisline);
 
+                char* nodesaves = tprintf("vcurr_%s_%s_%s#branch", instname, nodename2, strnode2);
+                allsaves = wl_cons(nodesaves, allsaves);
+
                 tfree(card->line);
                 card->line = newline;
 
@@ -10423,6 +10427,9 @@ static void inp_probe(struct card* deck)
                     char* vline = tprintf("vcurr_%s_%s_%s_%s %s %s 0", instname, nval, nodename, thisnode, newnode, thisnode);
                     card = insert_new_line(card, vline, 0, 0);
 
+                    char* nodesaves = tprintf("vcurr_%s_%s_%s_%s#branch", instname, nval, nodename, thisnode);
+                    allsaves = wl_cons(nodesaves, allsaves);
+
                     tfree(newnode);
                     tfree(nodename);
                 }
@@ -10430,6 +10437,13 @@ static void inp_probe(struct card* deck)
                 tfree(prevcard->line);
                 prevcard->line = copy(ds_get_buf(&dnewline));
                 ds_free(&dnewline);
+            }
+            if (allsaves) {
+                allsaves = wl_cons(copy(".save"), allsaves);
+                char* newline = wl_flatten(allsaves);
+                wl_free(allsaves);
+                allsaves = NULL;
+                card = insert_new_line(card, newline, 0, 0);
             }
         }
     }
@@ -10497,6 +10511,14 @@ static void inp_probe(struct card* deck)
                 else
                     node1 = NULL;
 
+                /* no nodes after first token: must be a node itself */
+                if (!node1 && !node2 && !node3) {
+                    /* v([nodename]) */
+                    allsaves = wl_cons(copy(instname1), allsaves);
+//                    fprintf(stderr, "Warning: v([nodename]) is not supported\n");
+                    continue;
+                }
+
                 tmpcard1 = nghash_find(instances, instname1);
                 if (!tmpcard1) {
                     fprintf(stderr, "Warning: Could not find the instance line for %s,\n   .probe %s will be ignored\n", instname1, wltmp->wl_word);
@@ -10505,12 +10527,7 @@ static void inp_probe(struct card* deck)
                 char* thisline = tmpcard1->line;
                 numnodes1 = get_number_terminals(thisline);
 
-                if (!node1 && !node2 && !node3) {
-                    /* v([nodename]) */
-                    fprintf(stderr, "Warning: v([nodename]) is not supported\n");
-                    continue;
-                }
-                else if (node1 && !node2 && !node3) {
+                if (node1 && !node2 && !node3) {
                     /* v([instance, node]) */
                     char* newline, * ptr;
                     int nodenum1;
@@ -10558,6 +10575,8 @@ static void inp_probe(struct card* deck)
                     }
 
                     newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_0_v%s0 0 %s 0 1", ee, instname1, ee, instname1, node1, nodename1, strnode1);
+                    char* nodesaves = tprintf("Vdiff%d_%s_%s_0_v%s0", ee, instname1, node1, nodename1);
+                    allsaves = wl_cons(nodesaves, allsaves);
                     tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
                     tfree(strnode1);
                     tfree(nodename1);
@@ -10649,6 +10668,9 @@ static void inp_probe(struct card* deck)
                     }
 
                     newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s_v%s%s 0 %s %s 1", ee, instname1, ee, instname1, node1, node2, nodename1, nodename2, strnode1, strnode2);
+                    char* nodesaves = tprintf("Vdiff%d_%s_%s_%s_v%s%s", ee, instname1, node1, node2, nodename1, nodename2);
+                    allsaves = wl_cons(nodesaves, allsaves);
+
                     tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
                     tfree(strnode1);
                     tfree(strnode2);
@@ -10752,6 +10774,8 @@ static void inp_probe(struct card* deck)
                         nodename2 = get_terminal_name(instname2, node2, instances);
                     }
                     newline = tprintf("Ediff%d_%s_%s Vdiff%d_%s_%s_%s_%s_v%s_v%s 0 %s %s 1", ee, instname1, instname2, ee, instname1, node1, instname2, node2, nodename1, nodename2, strnode1, strnode2);
+                    char* nodesaves = tprintf("Vdiff%d_%s_%s_%s_%s_v%s_v%s", ee, instname1, node1, instname2, node2, nodename1, nodename2);
+                    allsaves = wl_cons(nodesaves, allsaves);
                     tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
                     tfree(strnode1);
                     tfree(strnode2);
@@ -10786,11 +10810,19 @@ static void inp_probe(struct card* deck)
                 strnode2 = gettok(&thisline);
                 nodename1 = get_terminal_name(instname, "1", instances);
                 nodename2 = get_terminal_name(instname, "2", instances);
-                if (eq(nodename1, "nn") || eq(nodename2, "nn"))
+                if (eq(nodename1, "nn") || eq(nodename2, "nn")) {
                     newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s 0 %s %s 1", ee, instname, ee, instname, "1", "2", strnode1, strnode2);
-                else
-                    newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s_v%s%s 0 %s %s 1", ee, instname, ee, instname, "1", "2",nodename1, nodename2,  strnode1, strnode2);
+                    char* nodesaves = tprintf("Vdiff%d_%s_%s_%s", ee, instname, "1", "2");
+                    allsaves = wl_cons(nodesaves, allsaves);
+                }
+                else {
+                    newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s_v%s%s 0 %s %s 1", ee, instname, ee, instname, "1", "2", nodename1, nodename2, strnode1, strnode2);
+                    char* nodesaves = tprintf("Vdiff%d_%s_%s_%s_v%s%s", ee, instname, "1", "2", nodename1, nodename2);
+                    allsaves = wl_cons(nodesaves, allsaves);
+                }
+
                 tmpcard = insert_new_line(tmpcard, newline, 0, 0);
+
                 tfree(strnode1);
                 tfree(strnode2);
                 tfree(nodename1);
@@ -10848,6 +10880,9 @@ static void inp_probe(struct card* deck)
                     char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
                     newline = tprintf("%s %s %s", begstr, newnode, thisline);
 
+                    char* nodesaves = tprintf("vcurr_%s_%s_%s#branch", instname, nodename2, strnode2);
+                    allsaves = wl_cons(nodesaves, allsaves);
+
                     tfree(tmpcard->line);
                     tmpcard->line = newline;
 
@@ -10904,6 +10939,9 @@ static void inp_probe(struct card* deck)
 
                     tmpcard = insert_new_line(tmpcard, vline, 0, 0);
 
+                    char* nodesaves = tprintf("vcurr_%s_%s_%s_%s#branch", instname, node1, nodename1, strnode1);
+                    allsaves = wl_cons(nodesaves, allsaves);
+
                     tfree(begstr);
                     tfree(strnode1);
                     tfree(newnode);
@@ -10914,6 +10952,14 @@ static void inp_probe(struct card* deck)
                 fprintf(stderr, "Warning: unknown .probe parameter %s,\n   .probe %s will be ignored!\n", tmpstr, wltmp->wl_word);
                 continue;
             }
+        }
+        if (allsaves) {
+            allsaves = wl_cons(copy(".save"), allsaves);
+            char* newline = wl_flatten(allsaves);
+            wl_free(allsaves);
+            allsaves = NULL;
+            card = deck->nextcard;
+            card = insert_new_line(card, newline, 0, 0);
         }
     }
     nghash_free(instances, NULL, NULL);
