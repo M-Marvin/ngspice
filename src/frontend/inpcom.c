@@ -192,7 +192,7 @@ static char* eval_tc(char* line, char* tline);
 
 static void rem_double_braces(struct card* card);
 static void inp_probe(struct card* card);
-static char* get_terminal_name(char* element, char* numberstr);
+static char* get_terminal_name(char* element, char* numberstr, NGHASHPTR instances);
 static char* get_terminal_number(char* element, char* numberstr);
 
 #ifndef EXT_ASC
@@ -10291,6 +10291,51 @@ static void inp_probe(struct card* deck)
     /* don't free the wl_word, they belong to the cards */
     tfree(probes);
 
+    /* Set up the hash table for all instances (instance name is key, data
+       is the storage location of the card) */
+    instances = nghash_init(100);
+    nghash_unique(instances, TRUE);
+
+    for (card = deck; card; card = card->nextcard) {
+        char* curr_line = card->line;
+
+        /* exclude any command inside .control ... .endc */
+        if (ciprefix(".control", curr_line)) {
+            skip_control++;
+            continue;
+        }
+        else if (ciprefix(".endc", curr_line)) {
+            skip_control--;
+            continue;
+        }
+        else if (skip_control > 0) {
+            continue;
+        }
+        /* exclude any device or command inside .subckt ... .ends */
+        if (ciprefix(".subckt", curr_line)) {
+            skip_subckt++;
+            continue;
+        }
+        else if (ciprefix(".ends", curr_line)) {
+            skip_subckt--;
+            continue;
+        }
+        else if (skip_subckt > 0) {
+            continue;
+        }
+        if (*curr_line == '*')
+            continue;
+        if (*curr_line == '.')
+            continue;
+
+        /* here we should go on with only true device instances at top level.
+           Put all instance names as key into a hash table, with the address as parameter. */
+           /* Get the instance name as key */
+        char* instname = gettok_instance(&curr_line);
+        nghash_insert(instances, instname, card);
+    }
+
+
     if (haveall || probeparams == NULL) {
         /* Either we have 'all' among the .probe parameters, or we have a single .probe without parameters:
            Add current measure voltage sources for all devices, add differential E sources only for selected devices. */
@@ -10346,7 +10391,7 @@ static void inp_probe(struct card* deck)
                 strnode1 = gettok(&thisline);
                 strnode2 = gettok(&thisline);
 
-                nodename2 = get_terminal_name(instname, "2");
+                nodename2 = get_terminal_name(instname, "2", instances);
                 if (cieq(nodename2, "nn"))
                     nodename2 = "n2";
 
@@ -10376,7 +10421,7 @@ static void inp_probe(struct card* deck)
                     sadd(&dnewline, newnode);
                     cadd(&dnewline, ' ');
                     char* nval = _itoa(i, nodebuf, 10);
-                    nodename = get_terminal_name(instname, nval);
+                    nodename = get_terminal_name(instname, nval, instances);
                     char* vline = tprintf("vcurr_%s_%s_%s_%s %s %s 0", instname, nval, nodename, thisnode, newnode, thisnode);
                     card = insert_new_line(card, vline, 0, 0);
 
@@ -10394,54 +10439,6 @@ static void inp_probe(struct card* deck)
         /* There are .probe with parameters:
            Add current measure voltage sources only for the selected devices.
            Add differential probes only if 'all' had been found. */
-
-        /* Set up the hash table for all instances (instance name is key, data
-           is the storage location of the card) */
-        instances = nghash_init(100);
-        nghash_unique(instances, TRUE);
-
-        for (card = deck; card; card = card->nextcard) {
-            char* curr_line = card->line;
-
-            /* exclude any command inside .control ... .endc */
-            if (ciprefix(".control", curr_line)) {
-                skip_control++;
-                continue;
-            }
-            else if (ciprefix(".endc", curr_line)) {
-                skip_control--;
-                continue;
-            }
-            else if (skip_control > 0) {
-                continue;
-            }
-            /* exclude any device or command inside .subckt ... .ends */
-            if (ciprefix(".subckt", curr_line)) {
-                skip_subckt++;
-                continue;
-            }
-            else if (ciprefix(".ends", curr_line)) {
-                skip_subckt--;
-                continue;
-            }
-            else if (skip_subckt > 0) {
-                continue;
-            }
-            if (*curr_line == '*')
-                continue;
-            if (*curr_line == '.')
-                continue;
-
-            /* here we should go on with only true device instances at top level.
-               Put all instance names as key into a hash table, with the address as parameter. */
-               /* Get the instance name as key */
-            char* instname = gettok_instance(&curr_line);
-            nghash_insert(instances, instname, card);
-        }
-
-        /* Scan through the parameters, check for the device, look it up in the hash table,
-           perform the action required */
-
         for (wltmp = probeparams; wltmp; wltmp = wltmp->wl_next) {
             char *tmpstr = wltmp->wl_word;
             ee++;
@@ -10558,7 +10555,7 @@ static void inp_probe(struct card* deck)
                             tfree(node1);
                             node1 = copy(nn);
                         }
-                        nodename1 = get_terminal_name(instname1, node1);
+                        nodename1 = get_terminal_name(instname1, node1, instances);
                     }
 
                     newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_0_v%s0 0 %s 0 1", ee, instname1, ee, instname1, node1, nodename1, strnode1);
@@ -10635,7 +10632,7 @@ static void inp_probe(struct card* deck)
                             tfree(node1);
                             node1 = copy(nn);
                         }
-                        nodename1 = get_terminal_name(instname1, node1);
+                        nodename1 = get_terminal_name(instname1, node1, instances);
                     }
 
                     /* preserve the 0 node */
@@ -10648,7 +10645,7 @@ static void inp_probe(struct card* deck)
                             tfree(node2);
                             node2 = copy(nn);
                         }
-                        nodename2 = get_terminal_name(instname1, node2);
+                        nodename2 = get_terminal_name(instname1, node2, instances);
                     }
 
                     newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s_v%s%s 0 %s %s 1", ee, instname1, ee, instname1, node1, node2, nodename1, nodename2, strnode1, strnode2);
@@ -10737,7 +10734,7 @@ static void inp_probe(struct card* deck)
                             tfree(node1);
                             node1 = copy(nn);
                         }
-                        nodename1 = get_terminal_name(instname1, node1);
+                        nodename1 = get_terminal_name(instname1, node1, instances);
                     }
 
                     /* preserve the 0 node */
@@ -10750,7 +10747,7 @@ static void inp_probe(struct card* deck)
                             tfree(node2);
                             node2 = copy(nn);
                         }
-                        nodename2 = get_terminal_name(instname2, node2);
+                        nodename2 = get_terminal_name(instname2, node2, instances);
                     }
                     newline = tprintf("Ediff%d_%s_%s Vdiff%d_%s_%s_%s_%s_v%s_v%s 0 %s %s 1", ee, instname1, instname2, ee, instname1, node1, instname2, node2, nodename1, nodename2, strnode1, strnode2);
                     tmpcard1 = insert_new_line(tmpcard1, newline, 0, 0);
@@ -10784,8 +10781,8 @@ static void inp_probe(struct card* deck)
                 thisline = nexttok(thisline); /* skip instance name */
                 strnode1 = gettok(&thisline);
                 strnode2 = gettok(&thisline);
-                nodename1 = get_terminal_name(instname, "1");
-                nodename2 = get_terminal_name(instname, "2");
+                nodename1 = get_terminal_name(instname, "1", instances);
+                nodename2 = get_terminal_name(instname, "2", instances);
                 if (eq(nodename1, "nn") || eq(nodename2, "nn"))
                     newline = tprintf("Ediff%d_%s Vdiff%d_%s_%s_%s 0 %s %s 1", ee, instname, ee, instname, "1", "2", strnode1, strnode2);
                 else
@@ -10823,14 +10820,14 @@ static void inp_probe(struct card* deck)
                     node1 = copy(nn);
                 }
 
-                nodename1 = get_terminal_name(instname, node1);
+                nodename1 = get_terminal_name(instname, node1, instances);
 
                 if (node1 && *node1 == '\0') {
                     node1 = NULL;
                     nodename1 = "nn";
                 }
                 else
-                    nodename1 = get_terminal_name(instname, node1);
+                    nodename1 = get_terminal_name(instname, node1, instances);
 
                 /* i(R3): add voltage source always to second node */
                 if (!node1 && numnodes == 2) {
@@ -10842,7 +10839,7 @@ static void inp_probe(struct card* deck)
                     char* begstr = copy_substring(tmpcard->line, thisline);
                     strnode2 = gettok(&thisline);
 
-                    nodename2 = get_terminal_name(instname, "2");
+                    nodename2 = get_terminal_name(instname, "2", instances);
                     if (cieq(nodename2, "nn"))
                         nodename2 = "n2";
 
@@ -10913,11 +10910,14 @@ static void inp_probe(struct card* deck)
                 continue;
             }
         }
-        nghash_free(instances, NULL, NULL);
     }
+    nghash_free(instances, NULL, NULL);
 }
 
-static char *get_terminal_name(char* element, char *numberstr)
+/* enter the element (instance) line and the node number (as string),
+   get the node name, if defined (e.g. a for anode, c for cathode of a diode).
+   If not (yet) defined, return "nn" */
+static char *get_terminal_name(char* element, char *numberstr, NGHASHPTR instances)
 {
     switch (*element) {
     case 'r':
@@ -11026,6 +11026,7 @@ static char *get_terminal_name(char* element, char *numberstr)
 
 /* the following are not (yet) supported */
     case 'x':
+        /* This should be the names of the corresponding subcircuit */
         return "nn";
         break;
 
@@ -11054,6 +11055,10 @@ static char *get_terminal_name(char* element, char *numberstr)
     }
 }
 
+/* enter the element (instance) line and the node name,
+   if defined (e.g. a for anode, c for cathode of a diode)
+   return the node number. If there is no regular node
+   name, return "0". */
 static char* get_terminal_number(char* element, char* namestr)
 {
     switch (*element) {
