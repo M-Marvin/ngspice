@@ -79,7 +79,7 @@
     RB 17 16 5k ; 3k
     C 16 0 0.5u ; 0.15u
     RL 2 13 1k
-    X1 16    15   16   res   13  17   2   0   TLC555
+    XU1 16    15   16   res   13  17   2   0   TLC555
 *      THRES CONT TRIG RESET OUT DISC VCC GND
 
     .probe all
@@ -90,6 +90,7 @@
       run
       plot v(16) v(13) v(17) v(1)+6 v(4)+6 v(3)+6
       display
+      write 555.out all
     end
     .endc
 

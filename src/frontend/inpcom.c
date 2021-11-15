@@ -192,9 +192,11 @@ static char* eval_m(char* line, char* tline);
 static char* eval_tc(char* line, char* tline);
 
 static void rem_double_braces(struct card* card);
+
 static void inp_probe(struct card* card);
 static char* get_terminal_name(char* element, char* numberstr, NGHASHPTR instances);
 static char* get_terminal_number(char* element, char* numberstr);
+void modprobenames(INPtables* tab);
 
 #ifndef EXT_ASC
 static void utf8_syntax_check(struct card *deck);
@@ -10248,7 +10250,7 @@ static void inp_probe(struct card* deck)
     int skip_control = 0;
     int skip_subckt = 0;
     wordlist* probes = NULL, *probeparams = NULL, *wltmp, *allsaves = NULL;
-    bool haveall = FALSE, havedifferential = FALSE;
+    bool haveall = FALSE, havedifferential = FALSE, t = TRUE;
     NGHASHPTR instances;   /* instance hash table */
     int ee = 0; /* serial number for sources */
 
@@ -10262,6 +10264,9 @@ static void inp_probe(struct card* deck)
     /* no .probe command */
     if (probes == NULL)
         return;
+
+    /* set a variable if .probe command is given */
+    cp_vset("probe_is_given", CP_BOOL, &t);
 
     /* Assemble all .probe parameters in a wordlist 'probeparams' */
     for (wltmp = probes; wltmp; wltmp = wltmp->wl_next) {
@@ -10394,10 +10399,10 @@ static void inp_probe(struct card* deck)
                 nodename2 = get_terminal_name(instname, "2", instances);
 
                 char* newnode = tprintf("int_%s_%s", strnode2, instname);
-                char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
+                char* vline = tprintf("vcurr_%s:%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
                 char *newline = tprintf("%s %s %s %s", instname, strnode1, newnode, thisline);
 
-                char* nodesaves = tprintf("vcurr_%s_%s_%s#branch", instname, nodename2, strnode2);
+                char* nodesaves = tprintf("%s#branch", instname, nodename2, strnode2);
                 allsaves = wl_cons(nodesaves, allsaves);
 
                 tfree(card->line);
@@ -10422,14 +10427,24 @@ static void inp_probe(struct card* deck)
                     char* newnode = tprintf("int_%s_%s_%d", thisnode, instname, i);
                     sadd(&dnewline, newnode);
                     cadd(&dnewline, ' ');
-
-                    int j = snprintf(nodebuf, 10, "%d", i);
+                    /* to make the nodes unique */
+                    snprintf(nodebuf, 10, "%d", i);
                     nodename = get_terminal_name(instname, nodebuf, instances);
-                    char* vline = tprintf("vcurr_%s_%s_%s_%s %s %s 0", instname, nodebuf, nodename, thisnode, newnode, thisnode);
+                    char* vline = tprintf("vcurr_%s:%s:%s_%s %s %s 0", instname, nodename, thisnode, nodebuf, newnode, thisnode);
                     card = insert_new_line(card, vline, 0, 0);
 
-                    char* nodesaves = tprintf("vcurr_%s_%s_%s_%s#branch", instname, nodebuf, nodename, thisnode);
-                    allsaves = wl_cons(nodesaves, allsaves);
+                    /* special treatment for xlines: keep the x if next char is a number */
+                    if (*instname == 'x' && !isdigit_c(instname[1])) {
+                        char* nodesaves = tprintf("%s:%s#branch", instname + 1, nodename, thisnode, nodebuf);
+                        allsaves = wl_cons(nodesaves, allsaves);                    
+                    }
+                    else {
+                        char* nodesaves = tprintf("%s:%s#branch", instname, nodename, thisnode, nodebuf);
+                        allsaves = wl_cons(nodesaves, allsaves);    
+                    }
+
+
+                    
 
                     tfree(newnode);
                     tfree(nodename);
@@ -10878,10 +10893,10 @@ static void inp_probe(struct card* deck)
                     nodename2 = get_terminal_name(instname, "2", instances);
 
                     char* newnode = tprintf("int_%s_%s_2", strnode2, instname);
-                    char* vline = tprintf("vcurr_%s_%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
+                    char* vline = tprintf("vcurr_%:%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
                     newline = tprintf("%s %s %s", begstr, newnode, thisline);
 
-                    char* nodesaves = tprintf("vcurr_%s_%s_%s#branch", instname, nodename2, strnode2);
+                    char* nodesaves = tprintf("%s#branch", instname, nodename2, strnode2);
                     allsaves = wl_cons(nodesaves, allsaves);
 
                     tfree(tmpcard->line);
@@ -10933,15 +10948,22 @@ static void inp_probe(struct card* deck)
 
                     newline = tprintf("%s %s %s", begstr, newnode, thisline);
 
-                    char* vline = tprintf("vcurr_%s_%s_%s_%s %s %s 0", instname, node1, nodename1, strnode1, newnode, strnode1);
+                    char* vline = tprintf("vcurr_%s:%s:%s_%s %s %s 0", instname, node1, nodename1, strnode1, newnode, strnode1);
 
                     tfree(tmpcard->line);
                     tmpcard->line = newline;
 
                     tmpcard = insert_new_line(tmpcard, vline, 0, 0);
 
-                    char* nodesaves = tprintf("vcurr_%s_%s_%s_%s#branch", instname, node1, nodename1, strnode1);
-                    allsaves = wl_cons(nodesaves, allsaves);
+                    /* special treatment for xlines: keep the x if next char is a number */
+                    if (*instname == 'x' && !isdigit_c(instname[1])) {
+                        char* nodesaves = tprintf("%s:%s#branch", instname + 1, node1, nodename1, strnode1);
+                        allsaves = wl_cons(nodesaves, allsaves);
+                    }
+                    else {
+                        char* nodesaves = tprintf("%s:%s#branch", instname, node1, nodename1, strnode1);
+                        allsaves = wl_cons(nodesaves, allsaves);
+                    }
 
                     tfree(begstr);
                     tfree(strnode1);
@@ -11279,5 +11301,37 @@ static char* get_terminal_number(char* element, char* namestr)
     default:
         return "0";
         break;
+    }
+}
+
+/* get new .save names from V instances form instance table.
+   Called from inp.c*/
+void modprobenames(INPtables* tab) {
+    GENinstance* GENinst;
+    for (GENinst = tab->defVmod->GENinstances; GENinst; GENinst = GENinst->GENnextInstance) {
+        char* name = GENinst->GENname;
+        if (prefix("vcurr_x", name) && !isdigit_c(name[7])) {
+            /* copy from char no. 7 to (and excluding) second colon */
+            char* endname = strchr(name, ':');
+            endname = strchr(endname + 1, ':');
+            char* newname = name + 7;
+            snprintf(name, endname - newname + 1, "%s", newname);
+        }
+        /* Do not inlude the x in the new name */
+        else if (prefix("vcurr_", name)) {
+            /* copy from char no. 6 to (and excluding) second colon */
+            char* endname = strchr(name, ':');
+            char* endname2 = strchr(endname + 1, ':');
+            /* two-terminal device, one colon, copy all from char no. 6 to (and excluding) colon */
+            if (!endname2) {
+                char* newname = name + 6;
+                snprintf(name, endname - newname + 1, "%s", newname);
+            }
+            /* copy from char no. 6 to (and excluding) second colon */
+            else {
+                char* newname = name + 6;
+                snprintf(name, endname2 - newname + 1, "%s", newname);
+            }
+        }
     }
 }
