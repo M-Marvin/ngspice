@@ -10435,11 +10435,11 @@ static void inp_probe(struct card* deck)
 
                     /* special treatment for xlines: keep the x if next char is a number */
                     if (*instname == 'x' && !isdigit_c(instname[1])) {
-                        char* nodesaves = tprintf("%s:%s#branch", instname + 1, nodename, thisnode, nodebuf);
+                        char* nodesaves = tprintf("%s:%s#branch", instname + 1, nodename);
                         allsaves = wl_cons(nodesaves, allsaves);                    
                     }
                     else {
-                        char* nodesaves = tprintf("%s:%s#branch", instname, nodename, thisnode, nodebuf);
+                        char* nodesaves = tprintf("%s:%s#branch", instname, nodename);
                         allsaves = wl_cons(nodesaves, allsaves);    
                     }
 
@@ -10948,7 +10948,7 @@ static void inp_probe(struct card* deck)
 
                     newline = tprintf("%s %s %s", begstr, newnode, thisline);
 
-                    char* vline = tprintf("vcurr_%s:%s:%s_%s %s %s 0", instname, node1, nodename1, strnode1, newnode, strnode1);
+                    char* vline = tprintf("vcurr_%s:%s:%s_%s %s %s 0", instname, nodename1, node1,  strnode1, newnode, strnode1);
 
                     tfree(tmpcard->line);
                     tmpcard->line = newline;
@@ -10957,11 +10957,11 @@ static void inp_probe(struct card* deck)
 
                     /* special treatment for xlines: keep the x if next char is a number */
                     if (*instname == 'x' && !isdigit_c(instname[1])) {
-                        char* nodesaves = tprintf("%s:%s#branch", instname + 1, node1, nodename1, strnode1);
+                        char* nodesaves = tprintf("%s:%s#branch", instname + 1, nodename1);
                         allsaves = wl_cons(nodesaves, allsaves);
                     }
                     else {
-                        char* nodesaves = tprintf("%s:%s#branch", instname, node1, nodename1, strnode1);
+                        char* nodesaves = tprintf("%s:%s#branch", instname, nodename1);
                         allsaves = wl_cons(nodesaves, allsaves);
                     }
 

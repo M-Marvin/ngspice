@@ -56,7 +56,7 @@ V3 in 0 sin(0 2 1k)
 * erroneous .probe parameters 
 .probe (xyz)
 .probe V([MQ3, 7 , 0])
-
+.probe i(MQ5, s)
 *.probe all
 .tran 10u 10m
 
@@ -65,7 +65,8 @@ V3 in 0 sin(0 2 1k)
 run
 display
 rusage
-plot out in 
+plot out in
+plot i(mq3:s) i(mq5:s)
 .endc
 
 .end
