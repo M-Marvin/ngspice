@@ -102,7 +102,7 @@ struct pnode* ft_getpnames_quotes(wordlist* wl, bool check)
 {
     struct pnode* names = NULL, * tmpnode = NULL;
     char* sz = wl_flatten(wl);
-    if ((strstr(sz, "v(") || strstr(sz, "V(")) && !cp_getvar("noquotesinoutput", CP_BOOL, NULL, 0))
+    if ((strstr(sz, "v(") || strstr(sz, "V(") || strstr(sz, "i(") || strstr(sz, "I(")) && !cp_getvar("noquotesinoutput", CP_BOOL, NULL, 0))
     {
         char* tmpstr;
         char* nsz = tmpstr = stripWhiteSpacesInsideParens(sz);
@@ -165,6 +165,30 @@ struct pnode* ft_getpnames_quotes(wordlist* wl, bool check)
                 tfree(partoken1);
                 tfree(partoken2);
             }
+            else if ((tmpstr[0] == 'i' || tmpstr[0] == 'I') && tmpstr[1] == '(' && tmpstr[2] != '\"' &&
+                (nsz == tmpstr || isspace_c(tmpstr[-1]) || is_arith_char(tmpstr[-1]) || tmpstr[-1] == '.')) {
+                char* tmpstr2;
+                tmpstr += 2;
+                /* get the complete zzz of i(zzz) */
+                tmpstr2 = gettok_char(&tmpstr, ')', FALSE, FALSE);
+                /* check if this is i(zzz) or v(xx,yy) */
+
+                sadd(&ds1, "i(");
+
+                    bool hac = has_arith_char(tmpstr2);
+                    if (is_all_digits(tmpstr2)) {
+                        sadd(&ds1, tmpstr2);
+                    }
+                    else if (isdigit_c(*tmpstr2) || hac) {
+                        cadd(&ds1, '\"');
+                        sadd(&ds1, tmpstr2);
+                        cadd(&ds1, '\"');
+                    }
+                    else
+                        sadd(&ds1, tmpstr2);
+
+                tfree(tmpstr2);
+             }
             cadd(&ds1, *tmpstr);
             tmpstr++;
         }
@@ -175,7 +199,7 @@ struct pnode* ft_getpnames_quotes(wordlist* wl, bool check)
         tfree(nsz);
         /* restore the old node name after parsing */
         for (tmpnode = names; tmpnode; tmpnode = tmpnode->pn_next) {
-            if (strstr(tmpnode->pn_name, "v(\"")) {
+            if (strstr(tmpnode->pn_name, "v(\"") || strstr(tmpnode->pn_name, "i(\"")) {
                 char newstr[100];
                 char* tmp = tmpnode->pn_name;
                 int ii = 0;
