@@ -38,6 +38,7 @@ R5 Net-_C4-Pad1_ Net-_R4-Pad1_ 19.5k
 .tran 200u 10
 .option RELTOL=.01 ABSTOL=1N VNTOL=10u
 .probe all v([tj1]) v([tj2]) v([tcase1]) v([tcase2]) ; v([in]) v([out])
+*.probe i(m1:s)
 .save in out
 .control
 set controlswait

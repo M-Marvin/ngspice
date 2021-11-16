@@ -10852,6 +10852,12 @@ static void inp_probe(struct card* deck)
 
                 tmpstr += 2;
 
+                /* Replace a : by , to enable i(mn1:s) equivalent to i(mn1,s) */
+                char* co = strchr(tmpstr, ':');
+                if (co) {
+                    *co = ',';
+                }
+
                 instname = gettok_noparens(&tmpstr);
                 tmpcard = nghash_find(instances, instname);
                 if (!tmpcard) {
