@@ -1239,8 +1239,9 @@ inp_dodeck(
         ckt = if_inpdeck(deck, &tab);
         ft_curckt->FTEstats->FTESTATnetParseTime = seconds() - startTime;
         /* if .probe, rename the current measurement node vcurr_ */
-        if (cp_getvar("probe_is_given", CP_BOOL, NULL, 0));
+        if (cp_getvar("probe_is_given", CP_BOOL, NULL, 0)) {
             modprobenames(tab);
+        }
     } else {
         ckt = NULL;
     }
