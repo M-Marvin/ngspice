@@ -454,8 +454,10 @@ struct pnode *PP_mkfnode(const char *func, struct pnode *arg)
         d = vec_get(buf);
         if (d == NULL) {
             /* Well, too bad. */
-            fprintf(cp_err, "Error: no such function as %s.\n",
+            fprintf(cp_err, "\nError: no such function as %s,\n",
                     func);
+            fprintf(cp_err, "    or %s is not available.\n",
+                    buf);
             return (struct pnode *) NULL;
         }
         /* (void) strcpy(buf, d->v_name); XXX */
