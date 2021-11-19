@@ -9,14 +9,12 @@ C3 3 0 1u
 
 .ac dec 5 10 10000
 
-.probe all v(R2) v(R3) v([2])
+.probe i(R2) vd(R2) vd(R3) v(2)
 
 .control
 run
 display
-let vd(r2) = vdiff3_r2_1_2_vn1n2
-let vd(r3) = vdiff2_r3_1_2_vn1n2
-print vd(r2)/i(r2)
-plot mag(vd(r3))
+print vd_r2/i(r2)
+plot mag(vd_r3)
 .endc
 .end
