@@ -10234,9 +10234,8 @@ static int inp_poly_2g6_compat(struct card* deck) {
    all         add V(0) sources to all device nodes in addition to .save all
    I(R1)       add V(0) measure source to node 1 of a two-terminal device R1
    I(M4,3)     add V(0) measure source to node 3 of a multi-terminal device M4
-   I(M4,1,2,3) add V(0) measure source to node 3 of a multi-terminal device M4
-   V([R1])     add E source to both terminals of a two-terminal device R1
-   V([X1,2,3]) add E source to terminals 2 and 3 of a multi-terminal device X1
+   Vd(R1)     add E source to both terminals of a two-terminal device R1
+   Vd(X1:2:3) add E source to terminals 2 and 3 of a multi-terminal device X1
 
    Seach the netlist for the devices found in the .probe parameters.
    Check the number of terminals for each device. Add 0V voltage sources
@@ -11228,10 +11227,10 @@ static void inp_probe(struct card* deck)
                     nodename2 = get_terminal_name(instname, "2", instances);
 
                     char* newnode = tprintf("int_%s_%s_2", strnode2, instname);
-                    char* vline = tprintf("vcurr_%:%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
+                    char* vline = tprintf("vcurr_%s:%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
                     newline = tprintf("%s %s %s", begstr, newnode, thisline);
 
-                    char* nodesaves = tprintf("%s#branch", instname, nodename2, strnode2);
+                    char* nodesaves = tprintf("%s#branch", instname);
                     allsaves = wl_cons(nodesaves, allsaves);
 
                     tfree(tmpcard->line);
