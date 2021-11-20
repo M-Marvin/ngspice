@@ -10591,7 +10591,15 @@ static void inp_probe(struct card* deck)
                         }
                         /* nodenames may be numbers or characters, we always need the numbers */
                         node1 = get_terminal_number(instname1, nodename1);
+                        if (eq(node1, "0")) {
+                            fprintf(stderr, "Warning: Node %s is not available for device %s,\n   .probe %s will be ignored\n", node1, instname1, wltmp->wl_word);
+                            continue;
+                        }
                         node2 = get_terminal_number(instname2, nodename2);
+                        if (eq(node2, "0")) {
+                            fprintf(stderr, "Warning: Node %s is not available for device %s,\n   .probe %s will be ignored\n", node1, instname2, wltmp->wl_word);
+                            continue;
+                        }
 
                         /* nodes are numbered 1, 2, 3, ... */
                         nodenum1 = (int)strtol(node1, &ptr, 10);
@@ -10709,6 +10717,10 @@ static void inp_probe(struct card* deck)
                         /* nodenames may be numbers or characters, we always need the numbers */
                         node1 = get_terminal_number(instname1, nodename1);
                         node2 = get_terminal_number(instname1, nodename2);
+                        if (eq(node1, "0") && eq(node2, "0")) {
+                            fprintf(stderr, "Warning: Either first or second node have to be non-zero,\n   .probe %s will be ignored\n", wltmp->wl_word);
+                            continue;
+                        }
 
                         /* nodes are numbered 1, 2, 3, ... */
                         nodenum1 = (int)strtol(node1, &ptr, 10);
@@ -11203,6 +11215,12 @@ static void inp_probe(struct card* deck)
                 node1 = gettok_noparens(&tmpstr);
                 if (*node1 != '\0' && atoi(node1) == 0) {
                     char *nn = get_terminal_number(instname, node1);
+                    if (eq(nn, "0")) {
+                        fprintf(stderr, "Warning: Node %s is not available for device %s,\n   .probe %s will be ignored\n", node1, instname, wltmp->wl_word);
+                        tfree(node1);
+                        continue;
+                    }
+
                     tfree(node1);
                     node1 = copy(nn);
                 }
@@ -11432,7 +11450,6 @@ static char *get_terminal_name(char* element, char *numberstr, NGHASHPTR instanc
             break;
         }
 
-/* the following are not (yet) supported */
     case 'x':
         /* This should be the names of the corresponding subcircuit:
            Get the subckt name from the x line
@@ -11467,7 +11484,7 @@ static char *get_terminal_name(char* element, char *numberstr, NGHASHPTR instanc
         return subsnodestr;
         break;
     }
-
+/* the following are not (yet) supported */
     case 'u':
     case 'w':
     case 't':
@@ -11610,7 +11627,10 @@ static char* get_terminal_number(char* element, char* namestr)
 
         /* the following are not (yet) supported */
     case 'x':
-        return "0";
+        if (isdigit_c(*namestr))
+            return namestr;
+        else
+            return "0";
         break;
 
     case 'u':
@@ -11624,13 +11644,18 @@ static char* get_terminal_number(char* element, char* namestr)
     case 's':
     case 'y':
         //        return 4;
-        return "0";
+        if (isdigit_c(*namestr))
+            return namestr;
+        else
+            return "0";
         break;
 
     case 'p':
-        return "0";
+        if (isdigit_c(*namestr))
+            return namestr;
+        else
+            return "0";
         break;
-
 
     default:
         return "0";
