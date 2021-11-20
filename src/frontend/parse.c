@@ -167,12 +167,18 @@ struct pnode* ft_getpnames_quotes(wordlist* wl, bool check)
             }
             else if ((tmpstr[0] == 'i' || tmpstr[0] == 'I') && tmpstr[1] == '(' && tmpstr[2] != '\"' &&
                 (nsz == tmpstr || isspace_c(tmpstr[-1]) || is_arith_char(tmpstr[-1]) || tmpstr[-1] == '.')) {
-                char* tmpstr2;
+                char* tmpstr2, *tmpstr3;
+                tmpstr3 = tmpstr;
                 tmpstr += 2;
                 /* get the complete zzz of i(zzz) */
                 tmpstr2 = gettok_char(&tmpstr, ')', FALSE, FALSE);
+                /* missing final ) ?*/
+                if (!tmpstr2) {
+                    fprintf(stderr, "Error: closing ) is missing in %s,\n    ignored\n", tmpstr3);
+                    tmpstr = ++tmpstr3;
+                    continue;
+                }
                 /* check if this is i(zzz) or v(xx,yy) */
-
                 sadd(&ds1, "i(");
 
                     bool hac = has_arith_char(tmpstr2);
