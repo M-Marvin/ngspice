@@ -198,7 +198,7 @@ void inp_probe(struct card* deck)
                 char* vline = tprintf("vcurr_%s:%s_%s %s %s 0", instname, nodename2, strnode2, newnode, strnode2);
                 char *newline = tprintf("%s %s %s %s", instname, strnode1, newnode, thisline);
 
-                char* nodesaves = tprintf("%s#branch", instname, nodename2, strnode2);
+                char* nodesaves = tprintf("%s#branch", instname);
                 allsaves = wl_cons(nodesaves, allsaves);
 
                 tfree(card->line);
@@ -711,7 +711,7 @@ void inp_probe(struct card* deck)
                     for (i = 0; i < nodenum; i++) {
                         thisline = nexttok(thisline);
                         if (*thisline == '\0') {
-                            fprintf(stderr, "Warning: node number %d not available for instance %s!\n", nodenum);
+                            fprintf(stderr, "Warning: node number %d not available for instance %s!\n", nodenum, instname);
                             err = TRUE;
                             break;
                         }
